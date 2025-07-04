@@ -19,33 +19,27 @@ type BusinessRepository interface {
 	List(filter ListFilter) ([]*entity.Business, int64, error)
 	Update(tx *sql.Tx, business *entity.Business) error
 	Delete(tx *sql.Tx, id int64) error
-	
+
 	// Business User methods
 	AddUser(tx *sql.Tx, businessUser *entity.BusinessUser) error
 	GetUsersByBusinessID(businessID int64) ([]*entity.BusinessUser, error)
 	GetUserByBusinessAndProfile(businessID, profileID int64) (*entity.BusinessUser, error)
 	UpdateUserRole(tx *sql.Tx, businessID, profileID int64, role string) error
 	RemoveUser(tx *sql.Tx, businessID, profileID int64) error
-	
+
 	// Business Invite methods
 	CreateInvite(tx *sql.Tx, invite *entity.BusinessInvite) error
 	GetInviteByToken(token string) (*entity.BusinessInvite, error)
 	UseInvite(tx *sql.Tx, token string) error
-	
+
 	// Business Subscription methods
 	GetActiveSubscription(businessID int64) (*entity.BusinessSubscription, error)
 	CreateSubscription(tx *sql.Tx, subscription *entity.BusinessSubscription) error
 	UpdateSubscription(tx *sql.Tx, subscription *entity.BusinessSubscription) error
-	
+
 	// Helper methods
 	IsSlugExists(slug string) (bool, error)
 	CountUserBusinesses(profileID int64) (int, error)
-}
-
-// UserRepository interface untuk user repository (dari mod_user)
-type UserRepository interface {
-	GetProfileByID(profileID int64) (*entity.UserProfile, error)
-	GetProfileByUserID(userID string) (*entity.UserProfile, error)
 }
 
 type businessRepository struct {
@@ -184,19 +178,19 @@ func (r *businessRepository) List(filter ListFilter) ([]*entity.Business, int64,
 	if filter.Search != "" {
 		qb.Where("(LOWER(b_name) LIKE LOWER($1) OR LOWER(b_slug) LIKE LOWER($1))", "%"+filter.Search+"%")
 	}
-	
+
 	if filter.Type != "" {
 		qb.Where("b_type = ?", filter.Type)
 	}
-	
+
 	if filter.IsActive != nil {
 		qb.Where("b_is_active = ?", *filter.IsActive)
 	}
-	
+
 	if filter.IsSuspended != nil {
 		qb.Where("b_is_suspended = ?", *filter.IsSuspended)
 	}
-	
+
 	if filter.ProfileID > 0 {
 		qb.InnerJoin("atamlink.business_users", "bu_b_id = b_id")
 		qb.Where("bu_up_id = ? AND bu_is_active = true", filter.ProfileID)
@@ -563,7 +557,7 @@ func (r *businessRepository) GetActiveSubscription(businessID int64) (*entity.Bu
 	sub := &entity.BusinessSubscription{
 		Plan: &entity.MasterPlan{},
 	}
-	
+
 	var featuresJSON []byte
 	err := r.db.QueryRow(query, businessID).Scan(
 		&sub.ID,
@@ -657,7 +651,7 @@ func (r *businessRepository) UpdateSubscription(tx *sql.Tx, subscription *entity
 // IsSlugExists check apakah slug sudah ada
 func (r *businessRepository) IsSlugExists(slug string) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM atamlink.businesses WHERE b_slug = $1)`
-	
+
 	var exists bool
 	err := r.db.QueryRow(query, slug).Scan(&exists)
 	if err != nil {
@@ -673,7 +667,7 @@ func (r *businessRepository) CountUserBusinesses(profileID int64) (int, error) {
 		SELECT COUNT(*) 
 		FROM atamlink.business_users 
 		WHERE bu_up_id = $1 AND bu_is_active = true`
-	
+
 	var count int
 	err := r.db.QueryRow(query, profileID).Scan(&count)
 	if err != nil {
