@@ -276,10 +276,6 @@ make docker-build
 - Add tests for new features
 - Update documentation
 
-## 📄 License
-
-[MIT License](LICENSE)
-
 ## 👥 Team
 
 - Backend: Golang + Gin Framework
