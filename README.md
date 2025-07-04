@@ -15,7 +15,7 @@ Service untuk mengelola katalog digital bisnis dengan fitur multi-tenant.
 1. Clone repository
 
 ```bash
-git clone https://github.com/atam/atamlink-catalog.git
+git clone https://github.com/atam/atamlink-api.git
 cd atamlink-catalog
 ```
 
