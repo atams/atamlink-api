@@ -621,7 +621,7 @@ func (h *CatalogHandler) DeleteCard(c *gin.Context) {
 // @Router /catalogs/cards/{card_id}/images [post]
 func (h *CatalogHandler) UploadCardImage(c *gin.Context) {
 	// Get profile ID from context
-	profileID, exists := middleware.GetProfileID(c)
+	_, exists := middleware.GetProfileID(c)
 	if !exists {
 		utils.Unauthorized(c, constant.ErrMsgUnauthorized)
 		return
