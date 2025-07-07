@@ -63,14 +63,14 @@ func Error(c *gin.Context, code int, message string) {
 }
 
 // ValidationError mengirim response validation error
-// func ValidationError(c *gin.Context, errors interface{}) {
-// 	c.JSON(http.StatusBadRequest, Response{
-// 		Code:    http.StatusBadRequest,
-// 		Status:  "error",
-// 		Message: "Validasi gagal",
-// 		Data:    errors,
-// 	})
-// }
+func ValidationError(c *gin.Context, errors interface{}) {
+	c.JSON(http.StatusBadRequest, Response{
+		Code:    http.StatusBadRequest,
+		Status:  "error",
+		Message: "Validasi gagal",
+		Data:    errors,
+	})
+}
 
 // Abort menghentikan request dengan error
 func Abort(c *gin.Context, code int, message string) {

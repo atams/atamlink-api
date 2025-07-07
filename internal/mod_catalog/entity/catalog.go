@@ -25,7 +25,7 @@ type Catalog struct {
 	// Relations
 	Business *Business         `json:"business,omitempty"`
 	Theme    *MasterTheme      `json:"theme,omitempty"`
-	Sections []CatalogSection  `json:"sections,omitempty"`
+	Sections []*CatalogSection `json:"sections,omitempty"`
 }
 
 // CatalogSection entity untuk tabel catalog_sections
@@ -39,12 +39,12 @@ type CatalogSection struct {
 	UpdatedAt *time.Time             `json:"updated_at" db:"cs_updated_at"`
 
 	// Relations - based on type
-	Cards        []CatalogCard        `json:"cards,omitempty"`
-	Carousels    []CatalogCarousel    `json:"carousels,omitempty"`
-	FAQs         []CatalogFAQ         `json:"faqs,omitempty"`
-	Links        []CatalogLink        `json:"links,omitempty"`
-	Socials      []CatalogSocial      `json:"socials,omitempty"`
-	Testimonials []CatalogTestimonial `json:"testimonials,omitempty"`
+	Cards        []*CatalogCard        `json:"cards,omitempty"`
+	Carousels    []*CatalogCarousel    `json:"carousels,omitempty"`
+	FAQs         []*CatalogFAQ         `json:"faqs,omitempty"`
+	Links        []*CatalogLink        `json:"links,omitempty"`
+	Socials      []*CatalogSocial      `json:"socials,omitempty"`
+	Testimonials []*CatalogTestimonial `json:"testimonials,omitempty"`
 }
 
 // CatalogCard entity untuk tabel catalog_cards
@@ -66,8 +66,8 @@ type CatalogCard struct {
 	UpdatedAt  *time.Time      `json:"updated_at" db:"cc_updated_at"`
 
 	// Relations
-	Detail *CatalogCardDetail `json:"detail,omitempty"`
-	Media  []CatalogCardMedia `json:"media,omitempty"`
+	Detail *CatalogCardDetail  `json:"detail,omitempty"`
+	Media  []*CatalogCardMedia `json:"media,omitempty"`
 }
 
 // CatalogCardDetail entity untuk tabel catalog_card_details
@@ -83,7 +83,7 @@ type CatalogCardDetail struct {
 	UpdatedAt   *time.Time     `json:"updated_at" db:"ccd_updated_at"`
 
 	// Relations
-	Links []CatalogCardLink `json:"links,omitempty"`
+	Links []*CatalogCardLink `json:"links,omitempty"`
 }
 
 // CatalogCardMedia entity untuk tabel catalog_card_media
@@ -123,7 +123,7 @@ type CatalogCarousel struct {
 	UpdatedAt *time.Time     `json:"updated_at" db:"cr_updated_at"`
 
 	// Relations
-	Items []CatalogCarouselItem `json:"items,omitempty"`
+	Items []*CatalogCarouselItem `json:"items,omitempty"`
 }
 
 // CatalogCarouselItem entity untuk tabel catalog_carousel_items
@@ -237,7 +237,7 @@ func (c *Catalog) GetSubtitle() string {
 	return ""
 }
 
-// GetQRUrl get QR URL dengan null handling  
+// GetQRUrl get QR URL dengan null handling
 func (c *Catalog) GetQRUrl() string {
 	if c.QRUrl.Valid {
 		return c.QRUrl.String
@@ -250,7 +250,7 @@ func (cc *CatalogCard) GetDiscountedPrice() int64 {
 	if !cc.Price.Valid || cc.Discount <= 0 {
 		return 0
 	}
-	
+
 	discountAmount := (cc.Price.Int64 * int64(cc.Discount)) / 100
 	return cc.Price.Int64 - discountAmount
 }

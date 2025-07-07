@@ -23,12 +23,12 @@ type CatalogUseCase interface {
 	List(profileID int64, filter *dto.CatalogFilter, page, perPage int, orderBy string) ([]*dto.CatalogListResponse, int64, error)
 	Update(id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error)
 	Delete(id int64, profileID int64) error
-	
+
 	// Section management
 	CreateSection(catalogID int64, profileID int64, req *dto.CreateSectionRequest) error
 	UpdateSection(sectionID int64, profileID int64, req *dto.UpdateSectionRequest) error
 	DeleteSection(sectionID int64, profileID int64) error
-	
+
 	// Card management
 	CreateCard(sectionID int64, profileID int64, req *dto.CreateCardRequest) error
 	UpdateCard(cardID int64, profileID int64, req *dto.UpdateCardRequest) error
@@ -79,7 +79,7 @@ func (uc *catalogUseCase) Create(profileID int64, req *dto.CreateCatalogRequest)
 		if !uc.slugService.IsValid(req.Slug) {
 			return nil, errors.New(errors.ErrValidation, "Slug tidak valid", 400)
 		}
-		
+
 		exists, err := uc.catalogRepo.IsSlugExists(req.Slug)
 		if err != nil {
 			return nil, err
@@ -235,7 +235,7 @@ func (uc *catalogUseCase) GetBySlug(slug string) (*dto.PublicCatalogResponse, er
 			}
 			section.FAQs = faqs
 
-		// TODO: Implement other section types
+			// TODO: Implement other section types
 		}
 	}
 
@@ -320,7 +320,7 @@ func (uc *catalogUseCase) List(profileID int64, filter *dto.CatalogFilter, page,
 		})
 	}
 
-	return responses, int64(len(responses)), nil
+	return responses, total, nil
 }
 
 // Update update catalog
@@ -779,8 +779,8 @@ func (uc *catalogUseCase) createSectionInternal(tx *sql.Tx, catalogID int64, pro
 	// Create initial content based on type
 	switch req.Type {
 	case constant.SectionTypeCards:
-		// Cards will be added separately
-		
+	// Cards will be added separately
+
 	case constant.SectionTypeFAQs:
 		if faqs, ok := req.Content.([]dto.FAQRequest); ok {
 			for _, faqReq := range faqs {
@@ -798,7 +798,7 @@ func (uc *catalogUseCase) createSectionInternal(tx *sql.Tx, catalogID int64, pro
 			}
 		}
 
-	// TODO: Implement other section types
+		// TODO: Implement other section types
 	}
 
 	return nil
@@ -944,7 +944,7 @@ func (uc *catalogUseCase) toPublicCatalogResponse(catalog *entity.Catalog, secti
 			}
 			publicSection.Content = faqs
 
-		// TODO: Implement other section types
+			// TODO: Implement other section types
 		}
 
 		resp.Sections = append(resp.Sections, publicSection)

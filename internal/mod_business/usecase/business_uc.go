@@ -9,6 +9,7 @@ import (
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/entity"
 	"github.com/atam/atamlink/internal/mod_business/repository"
+	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/errors"
@@ -23,29 +24,29 @@ type BusinessUseCase interface {
 	List(profileID int64, filter *dto.BusinessFilter, page, perPage int, orderBy string) ([]*dto.BusinessListResponse, int64, error)
 	Update(id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error)
 	Delete(id int64, profileID int64) error
-	
+
 	// User management
 	AddUser(businessID int64, profileID int64, req *dto.AddUserRequest) error
 	UpdateUserRole(businessID int64, profileID int64, targetProfileID int64, role string) error
 	RemoveUser(businessID int64, profileID int64, targetProfileID int64) error
-	
+
 	// Invite management
 	CreateInvite(businessID int64, profileID int64, req *dto.CreateInviteRequest) (*dto.InviteResponse, error)
 	AcceptInvite(req *dto.AcceptInviteRequest) error
 }
 
 type businessUseCase struct {
-	db               *sql.DB
-	businessRepo     repository.BusinessRepository
-	userRepo         repository.UserRepository
-	slugService      service.SlugService
+	db           *sql.DB
+	businessRepo repository.BusinessRepository
+	userRepo     userRepo.UserRepository
+	slugService  service.SlugService
 }
 
 // NewBusinessUseCase membuat instance business use case baru
 func NewBusinessUseCase(
 	db *sql.DB,
 	businessRepo repository.BusinessRepository,
-	userRepo repository.UserRepository,
+	userRepo userRepo.UserRepository,
 	slugService service.SlugService,
 ) BusinessUseCase {
 	return &businessUseCase{
@@ -69,7 +70,7 @@ func (uc *businessUseCase) Create(profileID int64, req *dto.CreateBusinessReques
 		if !uc.slugService.IsValid(req.Slug) {
 			return nil, errors.New(errors.ErrValidation, "Slug tidak valid", 400)
 		}
-		
+
 		// Check if slug exists
 		exists, err := uc.businessRepo.IsSlugExists(req.Slug)
 		if err != nil {

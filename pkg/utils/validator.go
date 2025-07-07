@@ -14,8 +14,8 @@ type Validator struct {
 	validator *validator.Validate
 }
 
-// ValidationError struktur untuk error validasi
-type ValidationError struct {
+// ValidationErr struktur untuk error validasi
+type ValidationErr struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
@@ -43,8 +43,8 @@ func NewValidator() *Validator {
 }
 
 // Validate melakukan validasi struct
-func (v *Validator) Validate(data interface{}) []ValidationError {
-	var errors []ValidationError
+func (v *Validator) Validate(data interface{}) []ValidationErr {
+	var errors []ValidationErr
 
 	err := v.validator.Struct(data)
 	if err == nil {
@@ -54,7 +54,7 @@ func (v *Validator) Validate(data interface{}) []ValidationError {
 	// Type assert ke validator.ValidationErrors
 	validationErrors, ok := err.(validator.ValidationErrors)
 	if !ok {
-		errors = append(errors, ValidationError{
+		errors = append(errors, ValidationErr{
 			Field:   "general",
 			Message: "Validasi gagal",
 		})
@@ -63,7 +63,7 @@ func (v *Validator) Validate(data interface{}) []ValidationError {
 
 	// Convert ke format yang lebih user friendly
 	for _, e := range validationErrors {
-		errors = append(errors, ValidationError{
+		errors = append(errors, ValidationErr{
 			Field:   e.Field(),
 			Message: getErrorMessage(e),
 		})
@@ -134,8 +134,8 @@ func registerCustomValidators(v *validator.Validate) {
 		}
 		// Username harus alphanumeric dan underscore
 		for _, c := range username {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
-				 (c >= '0' && c <= '9') || c == '_') {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') || c == '_') {
 				return false
 			}
 		}
