@@ -56,7 +56,8 @@ func New() (*App, error) {
 	// Services
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
-	uploadService := service.NewUploadService(cfg.Upload)
+	// uploadService := service.NewUploadService(cfg.Upload)
+	uploadThingService := service.NewUploadThingService(cfg.UploadThing)
 	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
@@ -77,7 +78,8 @@ func New() (*App, error) {
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, validator)
-	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
+	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
+	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadThingService, validator)
 	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
 
 	// Inisialisasi router Gin

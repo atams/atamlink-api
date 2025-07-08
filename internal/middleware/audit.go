@@ -160,6 +160,14 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 					entry.NewData = responseBody
 				}
 			}
+			
+			const ginKeyOldData = "audit_old_data"
+
+			if oldVal, exists := c.Get(ginKeyOldData); exists {
+				if oldJSON, err := json.Marshal(oldVal); err == nil {
+					entry.OldData = oldJSON
+				}
+			}
 
 			// Log to audit service
 			auditService.Log(entry)

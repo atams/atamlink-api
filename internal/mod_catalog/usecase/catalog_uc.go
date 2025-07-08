@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atam/atamlink/internal/constant"
 	"github.com/atam/atamlink/internal/mod_business/repository"
 	"github.com/atam/atamlink/internal/mod_catalog/dto"
@@ -21,7 +23,7 @@ type CatalogUseCase interface {
 	GetByID(id int64, profileID int64) (*dto.CatalogResponse, error)
 	GetBySlug(slug string) (*dto.PublicCatalogResponse, error)
 	List(profileID int64, filter *dto.CatalogFilter, page, perPage int, orderBy string) ([]*dto.CatalogListResponse, int64, error)
-	Update(id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error)
+	Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error)
 	Delete(id int64, profileID int64) error
 
 	// Section management
@@ -324,11 +326,16 @@ func (uc *catalogUseCase) List(profileID int64, filter *dto.CatalogFilter, page,
 }
 
 // Update update catalog
-func (uc *catalogUseCase) Update(id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error) {
+func (uc *catalogUseCase) Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error) {
 	// Get existing catalog
 	catalog, err := uc.catalogRepo.GetByID(id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set old_data ke Gin Context
+	if ctx != nil {
+		ctx.Set("audit_old_data", catalog)
 	}
 
 	// Check permission
