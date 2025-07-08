@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atam/atamlink/internal/constant"
+	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/entity"
 	"github.com/atam/atamlink/internal/mod_business/repository"
@@ -22,8 +25,8 @@ type BusinessUseCase interface {
 	GetByID(id int64, profileID int64) (*dto.BusinessResponse, error)
 	GetBySlug(slug string) (*dto.BusinessResponse, error)
 	List(profileID int64, filter *dto.BusinessFilter, page, perPage int, orderBy string) ([]*dto.BusinessListResponse, int64, error)
-	Update(id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error)
-	Delete(id int64, profileID int64) error
+	Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error)
+	Delete(ctx *gin.Context, id int64, profileID int64) error
 
 	// User management
 	AddUser(businessID int64, profileID int64, req *dto.AddUserRequest) error
@@ -234,11 +237,16 @@ func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, pag
 }
 
 // Update update business
-func (uc *businessUseCase) Update(id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error) {
+func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error) {
 	// Get existing business
 	business, err := uc.businessRepo.GetByID(id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, business)
 	}
 
 	// Check permission
@@ -285,7 +293,18 @@ func (uc *businessUseCase) Update(id int64, profileID int64, req *dto.UpdateBusi
 }
 
 // Delete soft delete business
-func (uc *businessUseCase) Delete(id int64, profileID int64) error {
+func (uc *businessUseCase) Delete(ctx *gin.Context, id int64, profileID int64) error {
+	// Get existing business
+	business, err := uc.businessRepo.GetByID(id)
+	if err != nil {
+		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, business)
+	}
+	
 	// Check permission
 	if err := uc.checkBusinessPermission(id, profileID, constant.PermBusinessDelete); err != nil {
 		return err
