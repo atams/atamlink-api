@@ -13,6 +13,8 @@ import (
 	"github.com/atam/atamlink/internal/service"
 )
 
+const GinKeyAuditOldData = "audit_old_data"
+
 // AuditConfig konfigurasi untuk audit middleware
 type AuditConfig struct {
 	// Skip audit untuk paths tertentu
@@ -161,9 +163,7 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 				}
 			}
 			
-			const ginKeyOldData = "audit_old_data"
-
-			if oldVal, exists := c.Get(ginKeyOldData); exists {
+			if oldVal, exists := c.Get(GinKeyAuditOldData); exists {
 				if oldJSON, err := json.Marshal(oldVal); err == nil {
 					entry.OldData = oldJSON
 				}
