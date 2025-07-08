@@ -83,3 +83,15 @@ DROP TYPE IF EXISTS currency_type;
 
 -- Drop extension
 DROP EXTENSION IF EXISTS "uuid-ossp";
+
+DROP TYPE IF EXISTS audit_action_type;
+
+DROP TABLE IF EXISTS atamlink.audit_logs CASCADE;
+
+DROP INDEX IF EXISTS idx_audit_logs_user_profile_id;
+DROP INDEX IF EXISTS idx_audit_logs_business_id;
+DROP INDEX IF EXISTS idx_audit_logs_timestamp;
+DROP INDEX IF EXISTS idx_audit_logs_record;
+DROP INDEX IF EXISTS idx_audit_logs_action;
+
+DROP INDEX IF EXISTS idx_audit_logs_context_gin;

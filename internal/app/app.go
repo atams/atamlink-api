@@ -16,6 +16,7 @@ import (
 	"github.com/atam/atamlink/internal/config"
 	"github.com/atam/atamlink/internal/handler"
 	"github.com/atam/atamlink/internal/middleware"
+	auditRepo "github.com/atam/atamlink/internal/mod_audit/repository"
 	businessRepo "github.com/atam/atamlink/internal/mod_business/repository"
 	"github.com/atam/atamlink/internal/mod_business/usecase"
 	catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
@@ -35,6 +36,7 @@ type App struct {
 	Server *http.Server
 	Log    logger.Logger
 	DB     *sql.DB
+	AuditService service.AuditService
 }
 
 // New membuat dan mengonfigurasi instance aplikasi baru.
@@ -55,12 +57,17 @@ func New() (*App, error) {
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
 	uploadService := service.NewUploadService(cfg.Upload)
-
+	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
 	businessRepository := businessRepo.NewBusinessRepository(db)
 	catalogRepository := catalogRepo.NewCatalogRepository(db)
 	masterRepository := masterRepo.NewMasterRepository(db)
+	auditRepository := auditRepo.NewAuditRepository(db)
+
+	// Start audit service
+	auditService := service.NewAuditService(auditRepository, log)
+	auditService.Start()
 
 	// Use Cases
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
@@ -85,7 +92,7 @@ func New() (*App, error) {
 	router.Use(middleware.CORS(cfg.CORS))
 
 	// Daftarkan semua rute
-	setupRoutes(router, cfg, healthHandler, businessHandler, catalogHandler, masterHandler)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -100,6 +107,7 @@ func New() (*App, error) {
 		Server: srv,
 		Log:    log,
 		DB:     db,
+		AuditService: auditService,
 	}, nil
 }
 
@@ -118,6 +126,11 @@ func (a *App) Run() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	a.Log.Info("Shutting down server...")
+
+	// Stop audit service  
+	if auditSvc, ok := a.AuditService.(service.AuditService); ok {
+		auditSvc.Stop()
+	}
 
 	// Beri waktu 5 detik untuk menyelesaikan request yang sedang berjalan
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -138,6 +151,7 @@ func (a *App) Run() {
 func setupRoutes(
 	router *gin.Engine,
 	cfg *config.Config,
+	auditService service.AuditService,
 	healthHandler *handler.HealthHandler,
 	businessHandler *handler.BusinessHandler,
 	catalogHandler *handler.CatalogHandler,
@@ -159,6 +173,9 @@ func setupRoutes(
 		} else {
 			api.Use(middleware.Auth())
 		}
+
+		// Audit middleware
+		api.Use(middleware.Audit(auditService, nil))
 
 		// Rute untuk modul Business
 		businesses := api.Group("/businesses")
