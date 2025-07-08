@@ -73,7 +73,7 @@ func New() (*App, error) {
 	// Use Cases
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
 	catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
-	masterUseCase := masterUC.NewMasterUseCase(masterRepository)
+	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
@@ -202,10 +202,28 @@ func setupRoutes(
 		}
 
 		// Rute untuk modul Master Data
+		// masters := api.Group("/masters")
+		// {
+		// 	masters.GET("/plans", masterHandler.ListPlans)
+		// 	masters.GET("/themes", masterHandler.ListThemes)
+		// }
+
+		// Rute untuk modul Master Data
 		masters := api.Group("/masters")
 		{
+			// Plans CRUD
+			masters.POST("/plans", masterHandler.CreatePlan)
 			masters.GET("/plans", masterHandler.ListPlans)
+			masters.GET("/plans/:id", masterHandler.GetPlanByID)
+			masters.PUT("/plans/:id", masterHandler.UpdatePlan)
+			masters.DELETE("/plans/:id", masterHandler.DeletePlan)
+
+			// Themes CRUD
+			masters.POST("/themes", masterHandler.CreateTheme)
 			masters.GET("/themes", masterHandler.ListThemes)
+			masters.GET("/themes/:id", masterHandler.GetThemeByID)
+			masters.PUT("/themes/:id", masterHandler.UpdateTheme)
+			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
 		}
 	}
 }

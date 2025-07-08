@@ -26,6 +26,120 @@ func NewMasterHandler(masterUC usecase.MasterUseCase, validator *utils.Validator
 	}
 }
 
+// CreatePlan handler untuk create plan
+// @Summary Create plan
+// @Description Create new subscription plan
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param body body dto.CreatePlanRequest true "Plan data"
+// @Success 201 {object} utils.Response{data=dto.PlanResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/plans [post]
+func (h *MasterHandler) CreatePlan(c *gin.Context) {
+	// Bind request
+	var req dto.CreatePlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, constant.ErrMsgBadRequest)
+		return
+	}
+
+	// Validate request
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
+	}
+
+	// Create plan
+	plan, err := h.masterUC.CreatePlan(&req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.Created(c, "Plan berhasil dibuat", plan)
+}
+
+// UpdatePlan handler untuk update plan
+// @Summary Update plan
+// @Description Update existing subscription plan
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param id path int true "Plan ID"
+// @Param body body dto.UpdatePlanRequest true "Update data"
+// @Success 200 {object} utils.Response{data=dto.PlanResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/plans/{id} [put]
+func (h *MasterHandler) UpdatePlan(c *gin.Context) {
+	// Get plan ID from param
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "ID plan tidak valid")
+		return
+	}
+
+	// Bind request
+	var req dto.UpdatePlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, constant.ErrMsgBadRequest)
+		return
+	}
+
+	// Validate request
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
+	}
+
+	// Update plan
+	plan, err := h.masterUC.UpdatePlan(c, id, &req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.OK(c, "Plan berhasil diperbarui", plan)
+}
+
+// DeletePlan handler untuk delete plan
+// @Summary Delete plan
+// @Description Soft delete subscription plan
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param id path int true "Plan ID"
+// @Success 204 {object} nil
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/plans/{id} [delete]
+func (h *MasterHandler) DeletePlan(c *gin.Context) {
+	// Get plan ID from param
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "ID plan tidak valid")
+		return
+	}
+
+	// Delete plan
+	if err := h.masterUC.DeletePlan(c, id); err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.NoContent(c)
+}
+
 // ListPlans handler untuk list plans
 // @Summary List plans
 // @Description Get list of subscription plans
@@ -114,6 +228,120 @@ func (h *MasterHandler) GetPlanByID(c *gin.Context) {
 	}
 
 	utils.OK(c, "Data plan berhasil diambil", plan)
+}
+
+// CreateTheme handler untuk create theme
+// @Summary Create theme
+// @Description Create new catalog theme
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param body body dto.CreateThemeRequest true "Theme data"
+// @Success 201 {object} utils.Response{data=dto.ThemeResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/themes [post]
+func (h *MasterHandler) CreateTheme(c *gin.Context) {
+	// Bind request
+	var req dto.CreateThemeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, constant.ErrMsgBadRequest)
+		return
+	}
+
+	// Validate request
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
+	}
+
+	// Create theme
+	theme, err := h.masterUC.CreateTheme(&req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.Created(c, "Theme berhasil dibuat", theme)
+}
+
+// UpdateTheme handler untuk update theme
+// @Summary Update theme
+// @Description Update existing catalog theme
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param id path int true "Theme ID"
+// @Param body body dto.UpdateThemeRequest true "Update data"
+// @Success 200 {object} utils.Response{data=dto.ThemeResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/themes/{id} [put]
+func (h *MasterHandler) UpdateTheme(c *gin.Context) {
+	// Get theme ID from param
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "ID theme tidak valid")
+		return
+	}
+
+	// Bind request
+	var req dto.UpdateThemeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, constant.ErrMsgBadRequest)
+		return
+	}
+
+	// Validate request
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
+	}
+
+	// Update theme
+	theme, err := h.masterUC.UpdateTheme(c, id, &req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.OK(c, "Theme berhasil diperbarui", theme)
+}
+
+// DeleteTheme handler untuk delete theme
+// @Summary Delete theme
+// @Description Soft delete catalog theme
+// @Tags masters
+// @Accept json
+// @Produce json
+// @Param id path int true "Theme ID"
+// @Success 204 {object} nil
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /masters/themes/{id} [delete]
+func (h *MasterHandler) DeleteTheme(c *gin.Context) {
+	// Get theme ID from param
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "ID theme tidak valid")
+		return
+	}
+
+	// Delete theme
+	if err := h.masterUC.DeleteTheme(c, id); err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.NoContent(c)
 }
 
 // ListThemes handler untuk list themes
@@ -213,6 +441,10 @@ func (h *MasterHandler) handleError(c *gin.Context, err error) {
 		utils.NotFound(c, constant.ErrMsgPlanNotFound)
 	case errors.Is(err, errors.ErrNotFound):
 		utils.NotFound(c, constant.ErrMsgNotFound)
+	case errors.Is(err, errors.ErrConflict):
+		utils.Conflict(c, err.Error())
+	case errors.Is(err, errors.ErrValidation):
+		utils.BadRequest(c, err.Error())
 	default:
 		utils.InternalServerError(c, constant.ErrMsgInternalServer)
 	}
