@@ -24,6 +24,7 @@ import (
 	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
 	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
+	userUC "github.com/atam/atamlink/internal/mod_user/usecase"	
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/logger"
@@ -74,6 +75,7 @@ func New() (*App, error) {
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
 	catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
 	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
+	userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
@@ -81,6 +83,7 @@ func New() (*App, error) {
 	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
 	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadThingService, validator)
 	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
+	userHandler := handler.NewUserHandler(userUseCase, validator)
 
 	// Inisialisasi router Gin
 	if cfg.Server.Mode == "release" {
@@ -94,7 +97,7 @@ func New() (*App, error) {
 	router.Use(middleware.CORS(cfg.CORS))
 
 	// Daftarkan semua rute
-	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -158,6 +161,7 @@ func setupRoutes(
 	businessHandler *handler.BusinessHandler,
 	catalogHandler *handler.CatalogHandler,
 	masterHandler *handler.MasterHandler,
+	userHandler *handler.UserHandler,
 ) {
 	// Rute Health check (tidak perlu otentikasi)
 	router.GET("/health", healthHandler.Check)
@@ -224,6 +228,22 @@ func setupRoutes(
 			masters.GET("/themes/:id", masterHandler.GetThemeByID)
 			masters.PUT("/themes/:id", masterHandler.UpdateTheme)
 			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
+		}
+
+		profile := api.Group("/profile")
+		{
+			profile.GET("", userHandler.GetProfile)
+			profile.POST("", userHandler.CreateProfile)
+			profile.PUT("", userHandler.UpdateProfile)
+			profile.DELETE("", userHandler.DeleteProfile)
+		}
+
+		// Rute untuk User Management (admin)
+		users := api.Group("/users")
+		{
+			users.GET("/profiles/:id", userHandler.GetProfileByID)
+			users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
+			users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
 		}
 	}
 }
