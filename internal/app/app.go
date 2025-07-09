@@ -58,7 +58,6 @@ func New() (*App, error) {
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
 	uploadService := service.NewUploadService(cfg.Upload)
-	// uploadThingService := service.NewUploadThingService(cfg.UploadThing)
 	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
@@ -81,7 +80,6 @@ func New() (*App, error) {
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, validator)
 	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
-	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadThingService, validator)
 	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
 	userHandler := handler.NewUserHandler(userUseCase, validator)
 
@@ -133,9 +131,7 @@ func (a *App) Run() {
 	a.Log.Info("Shutting down server...")
 
 	// Stop audit service  
-	if auditSvc, ok := a.AuditService.(service.AuditService); ok {
-		auditSvc.Stop()
-	}
+	a.AuditService.Stop()
 
 	// Beri waktu 5 detik untuk menyelesaikan request yang sedang berjalan
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

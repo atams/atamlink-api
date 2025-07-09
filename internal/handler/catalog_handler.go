@@ -17,23 +17,20 @@ import (
 
 // CatalogHandler handler untuk catalog endpoints
 type CatalogHandler struct {
-	catalogUC     		usecase.CatalogUseCase
+	catalogUC     usecase.CatalogUseCase
 	uploadService service.UploadService
-	// uploadThingService 	service.UploadThingService
-	validator     		*utils.Validator
+	validator     *utils.Validator
 }
 
 // NewCatalogHandler membuat instance catalog handler baru
 func NewCatalogHandler(
 	catalogUC usecase.CatalogUseCase,
 	uploadService service.UploadService,
-	// uploadThingService service.UploadThingService,
 	validator *utils.Validator,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		catalogUC:     catalogUC,
 		uploadService: uploadService,
-		// uploadThingService: uploadThingService,
 		validator:     validator,
 	}
 }
@@ -650,11 +647,6 @@ func (h *CatalogHandler) UploadCardImage(c *gin.Context) {
 		return
 	}
 
-	// if err := h.uploadThingService.ValidateFile(file); err != nil {
-	// 	h.handleError(c, err)
-	// 	return
-	// }
-
 	// Upload file
 	folder := fmt.Sprintf("catalogs/cards/%d", cardID)
 	fileInfo, err := service.ProcessUpload(
@@ -668,21 +660,8 @@ func (h *CatalogHandler) UploadCardImage(c *gin.Context) {
 		return
 	}
 
-	// folder := fmt.Sprintf("catalogs/cards/%d", cardID)
-    // uploadResponse, err := h.uploadThingService.Upload(file, folder)
-    // if err != nil {
-    //     h.handleError(c, err)
-    //     return
-    // }
-
 	// TODO: Save media URL to database
 
-	// utils.OK(c, "Gambar berhasil diupload", map[string]interface{}{
-    //     "url":  uploadResponse.URL,
-    //     "key":  uploadResponse.Key,
-    //     "name": uploadResponse.Name,
-    //     "size": uploadResponse.Size,
-    // })
 	utils.OK(c, "Gambar berhasil diupload", fileInfo)
 }
 

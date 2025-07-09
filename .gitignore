@@ -12,12 +12,15 @@
 *.out
 coverage.html
 coverage.out
+*.cover
+*.coverage
 
 # Dependency directories
 vendor/
 
 # Go workspace file
 go.work
+go.work.sum
 
 # Environment files
 .env
@@ -36,24 +39,28 @@ go.work
 bin/
 dist/
 build/
+atamlink-catalog
 
 # Logs
 *.log
 logs/
 
 # Uploads folder (but keep structure)
-uploads/*
+uploads/
 !uploads/.gitkeep
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+*.sql.dump # For database dumps
 
 # Temporary files
 tmp/
 temp/
 *.tmp
+*.bak
+*.backup
 
 # OS files
 Thumbs.db
@@ -71,20 +78,9 @@ docs/swagger.yaml
 *.key
 *.crt
 
-# Backup files
-*.bak
-*.backup
-
-# Test coverage
-*.cover
-*.coverage
-
 # Profile output
 *.prof
 *.pprof
-
-# Binary
-atamlink-catalog
 
 # Docker
 .dockerignore
@@ -98,7 +94,8 @@ kubeconfig
 *.tfstate
 *.tfstate.*
 .terraform/
+.terraform.lock.hcl
 
-# Other
+# Other temporary/system files
 .history/
 *.orig

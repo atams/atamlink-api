@@ -14,7 +14,6 @@ type Config struct {
 	Log      LogConfig
 	CORS     CORSConfig
 	Upload   UploadConfig
-	UploadThing UploadThingConfig
 	API      APIConfig
 	Auth     AuthConfig
 }
@@ -59,13 +58,6 @@ type UploadConfig struct {
 	MaxSize      int64
 	AllowedTypes []string
 	Path         string
-}
-
-// UploadThingConfig konfigurasi upload file
-type UploadThingConfig struct {
-	Secret  string
-	AppID   string
-	MaxSize int64
 }
 
 // APIConfig konfigurasi API
@@ -113,12 +105,8 @@ func Load() *Config {
 		},
 		Upload: UploadConfig{
 			MaxSize:      getEnvAsInt64("UPLOAD_MAX_SIZE", 0), // 10MB
-			AllowedTypes: getEnvAsSlice("UPLOAD_ALLOWED_TYPES", []string{"image/jpeg", "image/png", "image/gif", "image/webp"}),
+			AllowedTypes: getEnvAsSlice("UPLOAD_ALLOWED_TYPES", []string{"image/jpeg", "image/png", "image/jpg"}),
 			Path:         getEnv("UPLOAD_PATH", ""),
-		},
-		UploadThing: UploadThingConfig{
-			Secret:  getEnv("UPLOADTHING_SECRET", ""),
-			AppID:   getEnv("UPLOADTHING_APP_ID", ""),
 		},
 		API: APIConfig{
 			Prefix:  getEnv("API_PREFIX", ""),
