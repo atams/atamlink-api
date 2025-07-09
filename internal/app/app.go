@@ -24,11 +24,18 @@ import (
 	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
 	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
-	userUC "github.com/atam/atamlink/internal/mod_user/usecase"	
+	userUC "github.com/atam/atamlink/internal/mod_user/usecase"
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/logger"
 	"github.com/atam/atamlink/pkg/utils"
+
+	// Import docs untuk swagger
+	_ "github.com/atam/atamlink/docs"
+
+	// Swagger UI
+	ginSwagger "github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
 )
 
 // App adalah struct utama yang menampung semua komponen aplikasi.
@@ -94,6 +101,9 @@ func New() (*App, error) {
 	router.Use(middleware.Logger(log))
 	router.Use(middleware.CORS(cfg.CORS))
 
+	// Setup Swagger untuk development
+	setupSwagger(router, cfg)
+
 	// Daftarkan semua rute
 	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
 
@@ -114,11 +124,28 @@ func New() (*App, error) {
 	}, nil
 }
 
+// setupSwagger setup swagger untuk development
+func setupSwagger(router *gin.Engine, cfg *config.Config) {
+	// Hanya aktifkan swagger di development mode
+	if cfg.Server.Mode == "debug" {
+		// Swagger endpoint
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		
+		// Redirect root ke swagger untuk kemudahan development
+		router.GET("/", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+		})
+	}
+}
+
 // Run memulai server HTTP dan menangani graceful shutdown.
 func (a *App) Run() {
 	// Jalankan server di goroutine terpisah agar tidak memblokir
 	go func() {
 		a.Log.Info("Server starting", logger.String("address", a.Server.Addr))
+		if a.Config.Server.Mode == "debug" {
+			a.Log.Info("Swagger UI available", logger.String("url", fmt.Sprintf("http://localhost%s/swagger/index.html", a.Server.Addr)))
+		}
 		if err := a.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			a.Log.Fatal("Failed to start server", logger.Error(err))
 		}
@@ -169,6 +196,9 @@ func setupRoutes(
 	// Grup untuk semua rute API v1
 	api := router.Group(cfg.API.Prefix)
 	{
+		api.GET("/health", healthHandler.Check)
+		api.GET("/health/db", healthHandler.CheckDB)
+
 		// Terapkan middleware otentikasi
 		if cfg.Auth.Bypass {
 			api.Use(middleware.AuthBypass(cfg.Auth.BypassUserID, cfg.Auth.BypassProfileID))
@@ -200,13 +230,6 @@ func setupRoutes(
 			catalogs.DELETE("/:id", catalogHandler.Delete)
 			// TODO: Tambahkan rute untuk section dan card management
 		}
-
-		// Rute untuk modul Master Data
-		// masters := api.Group("/masters")
-		// {
-		// 	masters.GET("/plans", masterHandler.ListPlans)
-		// 	masters.GET("/themes", masterHandler.ListThemes)
-		// }
 
 		// Rute untuk modul Master Data
 		masters := api.Group("/masters")

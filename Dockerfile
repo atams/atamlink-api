@@ -6,6 +6,8 @@ WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod tidy && go mod download
+RUN swag init -generalInfo ./docs.go
+
 
 COPY . .
 
