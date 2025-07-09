@@ -6,13 +6,19 @@ WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod tidy && go mod download
-RUN swag init -generalInfo ./docs.go
 
+# Install swag binary (pastikan versinya sesuai kebutuhan Anda)
+RUN go install github.com/swaggo/swag/cmd/swag@latest
 
 COPY . .
 
+# Generate swagger docs
+RUN /go/bin/swag init -generalInfo ./docs.go
+
+# Build binary
 RUN go build -o catalogd ./cmd/catalogd
 
+# Runtime stage
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 
