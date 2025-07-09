@@ -1,6 +1,6 @@
 module github.com/atam/atamlink
 
-go 1.24.1
+go 1.21
 
 require (
 	github.com/gin-contrib/cors v1.5.0
