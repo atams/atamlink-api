@@ -2,8 +2,10 @@ package repository
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/atam/atamlink/internal/mod_user/entity"
+	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/errors"
 )
 
@@ -12,6 +14,12 @@ type UserRepository interface {
 	GetProfileByID(profileID int64) (*entity.UserProfile, error)
 	GetProfileByUserID(userID string) (*entity.UserProfile, error)
 	GetUserByID(userID string) (*entity.User, error)
+	
+	// Profile CRUD methods
+	CreateProfile(tx *sql.Tx, profile *entity.UserProfile) error
+	UpdateProfile(tx *sql.Tx, profile *entity.UserProfile) error
+	DeleteProfile(tx *sql.Tx, profileID int64) error
+	IsPhoneExists(phone string, excludeProfileID int64) (bool, error)
 }
 
 type userRepository struct {
@@ -129,4 +137,98 @@ func (r *userRepository) GetUserByID(userID string) (*entity.User, error) {
 	}
 
 	return user, nil
+}
+
+// CreateProfile membuat profile baru
+func (r *userRepository) CreateProfile(tx *sql.Tx, profile *entity.UserProfile) error {
+	query := `
+		INSERT INTO atamlink.user_profiles (
+			up_u_id, up_phone, up_display_name, up_created_at
+		) VALUES ($1, $2, $3, $4)
+		RETURNING up_id`
+
+	err := tx.QueryRow(
+		query,
+		profile.UserID,
+		profile.Phone,
+		profile.DisplayName,
+		profile.CreatedAt,
+	).Scan(&profile.ID)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create profile")
+	}
+
+	return nil
+}
+
+// UpdateProfile update profile
+func (r *userRepository) UpdateProfile(tx *sql.Tx, profile *entity.UserProfile) error {
+	query := `
+		UPDATE atamlink.user_profiles SET
+			up_phone = $2,
+			up_display_name = $3,
+			up_updated_at = $4
+		WHERE up_id = $1`
+
+	result, err := tx.Exec(
+		query,
+		profile.ID,
+		profile.Phone,
+		profile.DisplayName,
+		time.Now(),
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to update profile")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrNotFound, "Profile tidak ditemukan", 404)
+	}
+
+	return nil
+}
+
+// DeleteProfile delete profile (hard delete karena tidak ada kolom is_active)
+func (r *userRepository) DeleteProfile(tx *sql.Tx, profileID int64) error {
+	query := `DELETE FROM atamlink.user_profiles WHERE up_id = $1`
+
+	result, err := tx.Exec(query, profileID)
+	if err != nil {
+		return errors.Wrap(err, "failed to delete profile")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrNotFound, "Profile tidak ditemukan", 404)
+	}
+
+	return nil
+}
+
+// IsPhoneExists check apakah phone sudah digunakan
+func (r *userRepository) IsPhoneExists(phone string, excludeProfileID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM atamlink.user_profiles 
+			WHERE up_phone = $1 AND up_id != $2
+		)`
+
+	var exists bool
+	err := r.db.QueryRow(query, database.NullString(phone), excludeProfileID).Scan(&exists)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check phone exists")
+	}
+
+	return exists, nil
 }

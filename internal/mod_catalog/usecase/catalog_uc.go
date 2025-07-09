@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atam/atamlink/internal/constant"
+	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/repository"
 	"github.com/atam/atamlink/internal/mod_catalog/dto"
 	"github.com/atam/atamlink/internal/mod_catalog/entity"
@@ -21,18 +24,18 @@ type CatalogUseCase interface {
 	GetByID(id int64, profileID int64) (*dto.CatalogResponse, error)
 	GetBySlug(slug string) (*dto.PublicCatalogResponse, error)
 	List(profileID int64, filter *dto.CatalogFilter, page, perPage int, orderBy string) ([]*dto.CatalogListResponse, int64, error)
-	Update(id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error)
-	Delete(id int64, profileID int64) error
+	Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error)
+	Delete(ctx *gin.Context, id int64, profileID int64) error
 
 	// Section management
 	CreateSection(catalogID int64, profileID int64, req *dto.CreateSectionRequest) error
-	UpdateSection(sectionID int64, profileID int64, req *dto.UpdateSectionRequest) error
-	DeleteSection(sectionID int64, profileID int64) error
+	UpdateSection(ctx *gin.Context, sectionID int64, profileID int64, req *dto.UpdateSectionRequest) error
+	DeleteSection(ctx *gin.Context, sectionID int64, profileID int64) error
 
 	// Card management
 	CreateCard(sectionID int64, profileID int64, req *dto.CreateCardRequest) error
-	UpdateCard(cardID int64, profileID int64, req *dto.UpdateCardRequest) error
-	DeleteCard(cardID int64, profileID int64) error
+	UpdateCard(ctx *gin.Context, cardID int64, profileID int64, req *dto.UpdateCardRequest) error
+	DeleteCard(ctx *gin.Context, cardID int64, profileID int64) error
 }
 
 type catalogUseCase struct {
@@ -324,11 +327,16 @@ func (uc *catalogUseCase) List(profileID int64, filter *dto.CatalogFilter, page,
 }
 
 // Update update catalog
-func (uc *catalogUseCase) Update(id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error) {
+func (uc *catalogUseCase) Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateCatalogRequest) (*dto.CatalogResponse, error) {
 	// Get existing catalog
 	catalog, err := uc.catalogRepo.GetByID(id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set old_data ke Gin Context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, catalog)
 	}
 
 	// Check permission
@@ -376,11 +384,16 @@ func (uc *catalogUseCase) Update(id int64, profileID int64, req *dto.UpdateCatal
 }
 
 // Delete soft delete catalog
-func (uc *catalogUseCase) Delete(id int64, profileID int64) error {
+func (uc *catalogUseCase) Delete(ctx *gin.Context, id int64, profileID int64) error {
 	// Get catalog
 	catalog, err := uc.catalogRepo.GetByID(id)
 	if err != nil {
 		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, catalog)
 	}
 
 	// Check permission
@@ -439,11 +452,16 @@ func (uc *catalogUseCase) CreateSection(catalogID int64, profileID int64, req *d
 }
 
 // UpdateSection update section
-func (uc *catalogUseCase) UpdateSection(sectionID int64, profileID int64, req *dto.UpdateSectionRequest) error {
+func (uc *catalogUseCase) UpdateSection(ctx *gin.Context, sectionID int64, profileID int64, req *dto.UpdateSectionRequest) error {
 	// Get section
 	section, err := uc.catalogRepo.GetSectionByID(sectionID)
 	if err != nil {
 		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, section)
 	}
 
 	// Get catalog for permission check
@@ -488,11 +506,16 @@ func (uc *catalogUseCase) UpdateSection(sectionID int64, profileID int64, req *d
 }
 
 // DeleteSection delete section
-func (uc *catalogUseCase) DeleteSection(sectionID int64, profileID int64) error {
+func (uc *catalogUseCase) DeleteSection(ctx *gin.Context, sectionID int64, profileID int64) error {
 	// Get section
 	section, err := uc.catalogRepo.GetSectionByID(sectionID)
 	if err != nil {
 		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, section)
 	}
 
 	// Get catalog for permission check
@@ -622,11 +645,16 @@ func (uc *catalogUseCase) CreateCard(sectionID int64, profileID int64, req *dto.
 }
 
 // UpdateCard update card
-func (uc *catalogUseCase) UpdateCard(cardID int64, profileID int64, req *dto.UpdateCardRequest) error {
+func (uc *catalogUseCase) UpdateCard(ctx *gin.Context, cardID int64, profileID int64, req *dto.UpdateCardRequest) error {
 	// Get card
 	card, err := uc.catalogRepo.GetCardByID(cardID)
 	if err != nil {
 		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, card)
 	}
 
 	// Get section
@@ -698,11 +726,16 @@ func (uc *catalogUseCase) UpdateCard(cardID int64, profileID int64, req *dto.Upd
 }
 
 // DeleteCard delete card
-func (uc *catalogUseCase) DeleteCard(cardID int64, profileID int64) error {
+func (uc *catalogUseCase) DeleteCard(ctx *gin.Context, cardID int64, profileID int64) error {
 	// Get card
 	card, err := uc.catalogRepo.GetCardByID(cardID)
 	if err != nil {
 		return err
+	}
+
+	// Inject old_data ke audit context
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditOldData, card)
 	}
 
 	// Get section

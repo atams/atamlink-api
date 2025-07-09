@@ -67,3 +67,15 @@ type UserFilter struct {
 	CreatedFrom *time.Time `json:"created_from,omitempty"`
 	CreatedTo   *time.Time `json:"created_to,omitempty"`
 }
+
+// CreateProfileRequest request untuk create profile
+type CreateProfileRequest struct {
+	DisplayName string `json:"display_name,omitempty" validate:"max=200"`
+	Phone       string `json:"phone,omitempty" validate:"omitempty,phone"`
+}
+
+// UpdateProfileRequest request untuk update profile
+type UpdateProfileRequest struct {
+	DisplayName string `json:"display_name,omitempty" validate:"omitempty,max=200"`
+	Phone       string `json:"phone,omitempty" validate:"omitempty,phone"`
+}

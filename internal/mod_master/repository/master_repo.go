@@ -3,7 +3,8 @@ package repository
 import (
 	"database/sql"
 	"encoding/json"
-
+	
+	"github.com/atam/atamlink/internal/constant"
 	"github.com/atam/atamlink/internal/mod_master/entity"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/errors"
@@ -12,12 +13,22 @@ import (
 // MasterRepository interface untuk master repository
 type MasterRepository interface {
 	// Plan methods
+	CreatePlan(tx *sql.Tx, plan *entity.MasterPlan) error
+	UpdatePlan(tx *sql.Tx, plan *entity.MasterPlan) error
+	DeletePlan(tx *sql.Tx, id int64) error
 	ListPlans(filter PlanFilter) ([]*entity.MasterPlan, error)
 	GetPlanByID(id int64) (*entity.MasterPlan, error)
+	IsPlanNameExists(name string, excludeID int64) (bool, error)
+	HasActiveSubscriptions(planID int64) (bool, error)
 	
 	// Theme methods
+	CreateTheme(tx *sql.Tx, theme *entity.MasterTheme) error
+	UpdateTheme(tx *sql.Tx, theme *entity.MasterTheme) error
+	DeleteTheme(tx *sql.Tx, id int64) error
 	ListThemes(filter ThemeFilter) ([]*entity.MasterTheme, error)
 	GetThemeByID(id int64) (*entity.MasterTheme, error)
+	IsThemeNameExists(name string, excludeID int64) (bool, error)
+	HasActiveCatalogs(themeID int64) (bool, error)
 }
 
 type masterRepository struct {
@@ -43,6 +54,273 @@ type ThemeFilter struct {
 	Type      string
 	IsActive  *bool
 	IsPremium *bool
+}
+
+// CreatePlan membuat plan baru
+func (r *masterRepository) CreatePlan(tx *sql.Tx, plan *entity.MasterPlan) error {
+	featuresJSON, err := json.Marshal(plan.Features)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal features")
+	}
+
+	query := `
+		INSERT INTO atamlink.master_plans (
+			mp_name, mp_price, mp_duration, mp_features, 
+			mp_is_active, mp_created_at
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING mp_id`
+
+	err = tx.QueryRow(
+		query,
+		plan.Name,
+		plan.Price,
+		plan.Duration,
+		featuresJSON,
+		plan.IsActive,
+		plan.CreatedAt,
+	).Scan(&plan.ID)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create plan")
+	}
+
+	return nil
+}
+
+// UpdatePlan update existing plan
+func (r *masterRepository) UpdatePlan(tx *sql.Tx, plan *entity.MasterPlan) error {
+	featuresJSON, err := json.Marshal(plan.Features)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal features")
+	}
+
+	query := `
+		UPDATE atamlink.master_plans SET
+			mp_name = $2,
+			mp_price = $3,
+			mp_duration = $4,
+			mp_features = $5,
+			mp_is_active = $6
+		WHERE mp_id = $1`
+
+	result, err := tx.Exec(
+		query,
+		plan.ID,
+		plan.Name,
+		plan.Price,
+		plan.Duration,
+		featuresJSON,
+		plan.IsActive,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to update plan")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrPlanNotFound, constant.ErrMsgPlanNotFound, 404)
+	}
+
+	return nil
+}
+
+// DeletePlan soft delete plan (set is_active = false)
+func (r *masterRepository) DeletePlan(tx *sql.Tx, id int64) error {
+	query := `
+		UPDATE atamlink.master_plans 
+		SET mp_is_active = false
+		WHERE mp_id = $1`
+
+	result, err := tx.Exec(query, id)
+	if err != nil {
+		return errors.Wrap(err, "failed to delete plan")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrPlanNotFound, constant.ErrMsgPlanNotFound, 404)
+	}
+
+	return nil
+}
+
+// IsPlanNameExists check if plan name already exists
+func (r *masterRepository) IsPlanNameExists(name string, excludeID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM atamlink.master_plans 
+			WHERE LOWER(mp_name) = LOWER($1) AND mp_id != $2
+		)`
+
+	var exists bool
+	err := r.db.QueryRow(query, name, excludeID).Scan(&exists)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check plan name exists")
+	}
+
+	return exists, nil
+}
+
+// HasActiveSubscriptions check if plan has active subscriptions
+func (r *masterRepository) HasActiveSubscriptions(planID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM atamlink.business_subscriptions 
+			WHERE bs_mp_id = $1 
+			AND bs_status = 'active' 
+			AND bs_expires_at > NOW()
+		)`
+
+	var exists bool
+	err := r.db.QueryRow(query, planID).Scan(&exists)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check active subscriptions")
+	}
+
+	return exists, nil
+}
+
+// CreateTheme membuat theme baru
+func (r *masterRepository) CreateTheme(tx *sql.Tx, theme *entity.MasterTheme) error {
+	settingsJSON, err := json.Marshal(theme.DefaultSettings)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal default settings")
+	}
+
+	query := `
+		INSERT INTO atamlink.master_themes (
+			mt_name, mt_description, mt_type, mt_default_settings,
+			mt_is_premium, mt_is_active, mt_created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING mt_id`
+
+	err = tx.QueryRow(
+		query,
+		theme.Name,
+		theme.Description,
+		theme.Type,
+		settingsJSON,
+		theme.IsPremium,
+		theme.IsActive,
+		theme.CreatedAt,
+	).Scan(&theme.ID)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create theme")
+	}
+
+	return nil
+}
+
+// UpdateTheme update existing theme
+func (r *masterRepository) UpdateTheme(tx *sql.Tx, theme *entity.MasterTheme) error {
+	settingsJSON, err := json.Marshal(theme.DefaultSettings)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal default settings")
+	}
+
+	query := `
+		UPDATE atamlink.master_themes SET
+			mt_name = $2,
+			mt_description = $3,
+			mt_type = $4,
+			mt_default_settings = $5,
+			mt_is_premium = $6,
+			mt_is_active = $7
+		WHERE mt_id = $1`
+
+	result, err := tx.Exec(
+		query,
+		theme.ID,
+		theme.Name,
+		theme.Description,
+		theme.Type,
+		settingsJSON,
+		theme.IsPremium,
+		theme.IsActive,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to update theme")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrNotFound, "Theme tidak ditemukan", 404)
+	}
+
+	return nil
+}
+
+// DeleteTheme soft delete theme (set is_active = false)
+func (r *masterRepository) DeleteTheme(tx *sql.Tx, id int64) error {
+	query := `
+		UPDATE atamlink.master_themes 
+		SET mt_is_active = false
+		WHERE mt_id = $1`
+
+	result, err := tx.Exec(query, id)
+	if err != nil {
+		return errors.Wrap(err, "failed to delete theme")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrap(err, "failed to check rows affected")
+	}
+
+	if rowsAffected == 0 {
+		return errors.New(errors.ErrNotFound, "Theme tidak ditemukan", 404)
+	}
+
+	return nil
+}
+
+// IsThemeNameExists check if theme name already exists
+func (r *masterRepository) IsThemeNameExists(name string, excludeID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM atamlink.master_themes 
+			WHERE LOWER(mt_name) = LOWER($1) AND mt_id != $2
+		)`
+
+	var exists bool
+	err := r.db.QueryRow(query, name, excludeID).Scan(&exists)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check theme name exists")
+	}
+
+	return exists, nil
+}
+
+// HasActiveCatalogs check if theme has active catalogs
+func (r *masterRepository) HasActiveCatalogs(themeID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM atamlink.catalogs 
+			WHERE c_mt_id = $1 AND c_is_active = true
+		)`
+
+	var exists bool
+	err := r.db.QueryRow(query, themeID).Scan(&exists)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check active catalogs")
+	}
+
+	return exists, nil
 }
 
 // ListPlans mendapatkan list plans

@@ -8,6 +8,8 @@ import (
 	"github.com/atam/atamlink/pkg/utils"
 )
 
+const GinKeyUserID = "user_id"
+
 // AuthUser data user yang sudah terautentikasi
 type AuthUser struct {
 	UserID    string `json:"user_id"`
@@ -82,7 +84,7 @@ func GetAuthUser(c *gin.Context) (*AuthUser, bool) {
 
 // GetUserID mendapatkan user ID dari context
 func GetUserID(c *gin.Context) (string, bool) {
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get(GinKeyUserID)
 	if !exists {
 		return "", false
 	}

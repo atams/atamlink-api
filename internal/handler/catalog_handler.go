@@ -243,7 +243,7 @@ func (h *CatalogHandler) Update(c *gin.Context) {
 	}
 
 	// Update catalog
-	catalog, err := h.catalogUC.Update(id, profileID, &req)
+	catalog, err := h.catalogUC.Update(c, id, profileID, &req)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -282,7 +282,7 @@ func (h *CatalogHandler) Delete(c *gin.Context) {
 	}
 
 	// Delete catalog
-	if err := h.catalogUC.Delete(id, profileID); err != nil {
+	if err := h.catalogUC.Delete(c, id, profileID); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -415,7 +415,7 @@ func (h *CatalogHandler) UpdateSection(c *gin.Context) {
 	}
 
 	// Update section
-	if err := h.catalogUC.UpdateSection(sectionID, profileID, &req); err != nil {
+	if err := h.catalogUC.UpdateSection(c, sectionID, profileID, &req); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -453,7 +453,7 @@ func (h *CatalogHandler) DeleteSection(c *gin.Context) {
 	}
 
 	// Delete section
-	if err := h.catalogUC.DeleteSection(sectionID, profileID); err != nil {
+	if err := h.catalogUC.DeleteSection(c, sectionID, profileID); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -557,7 +557,7 @@ func (h *CatalogHandler) UpdateCard(c *gin.Context) {
 	}
 
 	// Update card
-	if err := h.catalogUC.UpdateCard(cardID, profileID, &req); err != nil {
+	if err := h.catalogUC.UpdateCard(c, cardID, profileID, &req); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -595,7 +595,7 @@ func (h *CatalogHandler) DeleteCard(c *gin.Context) {
 	}
 
 	// Delete card
-	if err := h.catalogUC.DeleteCard(cardID, profileID); err != nil {
+	if err := h.catalogUC.DeleteCard(c, cardID, profileID); err != nil {
 		h.handleError(c, err)
 		return
 	}

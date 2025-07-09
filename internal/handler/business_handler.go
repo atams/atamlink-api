@@ -227,7 +227,7 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 	}
 
 	// Update business
-	business, err := h.businessUC.Update(id, profileID, &req)
+	business, err := h.businessUC.Update(c, id, profileID, &req)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -266,7 +266,7 @@ func (h *BusinessHandler) Delete(c *gin.Context) {
 	}
 
 	// Delete business
-	if err := h.businessUC.Delete(id, profileID); err != nil {
+	if err := h.businessUC.Delete(c, id, profileID); err != nil {
 		h.handleError(c, err)
 		return
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/atam/atamlink/internal/config"
 	"github.com/atam/atamlink/internal/handler"
 	"github.com/atam/atamlink/internal/middleware"
+	auditRepo "github.com/atam/atamlink/internal/mod_audit/repository"
 	businessRepo "github.com/atam/atamlink/internal/mod_business/repository"
 	"github.com/atam/atamlink/internal/mod_business/usecase"
 	catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
@@ -23,6 +24,7 @@ import (
 	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
 	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
+	userUC "github.com/atam/atamlink/internal/mod_user/usecase"	
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/logger"
@@ -35,6 +37,7 @@ type App struct {
 	Server *http.Server
 	Log    logger.Logger
 	DB     *sql.DB
+	AuditService service.AuditService
 }
 
 // New membuat dan mengonfigurasi instance aplikasi baru.
@@ -55,23 +58,30 @@ func New() (*App, error) {
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
 	uploadService := service.NewUploadService(cfg.Upload)
-
+	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
 	businessRepository := businessRepo.NewBusinessRepository(db)
 	catalogRepository := catalogRepo.NewCatalogRepository(db)
 	masterRepository := masterRepo.NewMasterRepository(db)
+	auditRepository := auditRepo.NewAuditRepository(db)
+
+	// Start audit service
+	auditService := service.NewAuditService(auditRepository, log)
+	auditService.Start()
 
 	// Use Cases
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
 	catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
-	masterUseCase := masterUC.NewMasterUseCase(masterRepository)
+	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
+	userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, validator)
 	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
 	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
+	userHandler := handler.NewUserHandler(userUseCase, validator)
 
 	// Inisialisasi router Gin
 	if cfg.Server.Mode == "release" {
@@ -85,7 +95,7 @@ func New() (*App, error) {
 	router.Use(middleware.CORS(cfg.CORS))
 
 	// Daftarkan semua rute
-	setupRoutes(router, cfg, healthHandler, businessHandler, catalogHandler, masterHandler)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -100,6 +110,7 @@ func New() (*App, error) {
 		Server: srv,
 		Log:    log,
 		DB:     db,
+		AuditService: auditService,
 	}, nil
 }
 
@@ -118,6 +129,9 @@ func (a *App) Run() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	a.Log.Info("Shutting down server...")
+
+	// Stop audit service  
+	a.AuditService.Stop()
 
 	// Beri waktu 5 detik untuk menyelesaikan request yang sedang berjalan
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -138,10 +152,12 @@ func (a *App) Run() {
 func setupRoutes(
 	router *gin.Engine,
 	cfg *config.Config,
+	auditService service.AuditService,
 	healthHandler *handler.HealthHandler,
 	businessHandler *handler.BusinessHandler,
 	catalogHandler *handler.CatalogHandler,
 	masterHandler *handler.MasterHandler,
+	userHandler *handler.UserHandler,
 ) {
 	// Rute Health check (tidak perlu otentikasi)
 	router.GET("/health", healthHandler.Check)
@@ -159,6 +175,9 @@ func setupRoutes(
 		} else {
 			api.Use(middleware.Auth())
 		}
+
+		// Audit middleware
+		api.Use(middleware.Audit(auditService, nil))
 
 		// Rute untuk modul Business
 		businesses := api.Group("/businesses")
@@ -183,10 +202,44 @@ func setupRoutes(
 		}
 
 		// Rute untuk modul Master Data
+		// masters := api.Group("/masters")
+		// {
+		// 	masters.GET("/plans", masterHandler.ListPlans)
+		// 	masters.GET("/themes", masterHandler.ListThemes)
+		// }
+
+		// Rute untuk modul Master Data
 		masters := api.Group("/masters")
 		{
+			// Plans CRUD
+			masters.POST("/plans", masterHandler.CreatePlan)
 			masters.GET("/plans", masterHandler.ListPlans)
+			masters.GET("/plans/:id", masterHandler.GetPlanByID)
+			masters.PUT("/plans/:id", masterHandler.UpdatePlan)
+			masters.DELETE("/plans/:id", masterHandler.DeletePlan)
+
+			// Themes CRUD
+			masters.POST("/themes", masterHandler.CreateTheme)
 			masters.GET("/themes", masterHandler.ListThemes)
+			masters.GET("/themes/:id", masterHandler.GetThemeByID)
+			masters.PUT("/themes/:id", masterHandler.UpdateTheme)
+			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
+		}
+
+		profile := api.Group("/profile")
+		{
+			profile.GET("", userHandler.GetProfile)
+			profile.POST("", userHandler.CreateProfile)
+			profile.PUT("", userHandler.UpdateProfile)
+			profile.DELETE("", userHandler.DeleteProfile)
+		}
+
+		// Rute untuk User Management (admin)
+		users := api.Group("/users")
+		{
+			users.GET("/profiles/:id", userHandler.GetProfileByID)
+			users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
+			users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
 		}
 	}
 }

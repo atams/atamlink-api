@@ -402,3 +402,37 @@ CREATE INDEX ix_users_u_locked_until ON atamlink.users USING btree (u_locked_unt
 CREATE UNIQUE INDEX ix_users_u_username ON atamlink.users USING btree (u_username);
 CREATE INDEX idx_users_email_active ON atamlink.users USING btree (u_email) WHERE (u_is_active = true);
 CREATE INDEX idx_users_username_active ON atamlink.users USING btree (u_username) WHERE (u_is_active = true);
+
+-- ENUM untuk jenis aksi audit
+CREATE TYPE audit_action_type AS ENUM (
+    'CREATE',
+    'UPDATE',
+    'DELETE',
+    'INVITE_SENT',
+    'INVITE_USED'
+);
+
+-- Tabel utama untuk Audit Log
+CREATE TABLE atamlink.audit_logs (
+    al_id BIGSERIAL PRIMARY KEY,
+    al_timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    al_user_profile_id BIGINT REFERENCES atamlink.user_profiles(up_id) ON DELETE SET NULL,
+    al_business_id BIGINT REFERENCES atamlink.businesses(b_id) ON DELETE SET NULL,
+    al_action audit_action_type NOT NULL,
+    al_table_name TEXT,
+    al_record_id TEXT,
+    al_old_data JSONB,
+    al_new_data JSONB,
+    al_context JSONB,
+    al_reason TEXT
+);
+
+-- Indexes untuk mempercepat query pada tabel audit_logs
+CREATE INDEX idx_audit_logs_user_profile_id ON atamlink.audit_logs(al_user_profile_id);
+CREATE INDEX idx_audit_logs_business_id ON atamlink.audit_logs(al_business_id);
+CREATE INDEX idx_audit_logs_timestamp ON atamlink.audit_logs(al_timestamp);
+CREATE INDEX idx_audit_logs_record ON atamlink.audit_logs(al_table_name, al_record_id);
+CREATE INDEX idx_audit_logs_action ON atamlink.audit_logs(al_action);
+
+-- Index GIN pada kolom JSONB agar bisa melakukan query ke dalam datanya secara efisien
+CREATE INDEX idx_audit_logs_context_gin ON atamlink.audit_logs USING GIN(al_context);
