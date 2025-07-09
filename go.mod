@@ -3,11 +3,11 @@ module github.com/atam/atamlink
 go 1.24.1
 
 require (
-	github.com/chai2010/webp v1.1.1
 	github.com/gin-contrib/cors v1.5.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/google/uuid v1.5.0
+	github.com/h2non/bimg v1.1.9
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	go.uber.org/zap v1.26.0

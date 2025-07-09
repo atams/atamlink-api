@@ -84,7 +84,6 @@ docs/swagger.yaml
 *.pprof
 
 # Binary
-catalogd
 atamlink-catalog
 
 # Docker

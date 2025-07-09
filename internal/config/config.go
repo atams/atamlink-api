@@ -85,25 +85,25 @@ type AuthConfig struct {
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
-			Mode:         getEnv("SERVER_MODE", "debug"),
-			ReadTimeout:  getDuration("SERVER_READ_TIMEOUT", "60s"),
-			WriteTimeout: getDuration("SERVER_WRITE_TIMEOUT", "60s"),
+			Port:         getEnv("SERVER_PORT", ""),
+			Mode:         getEnv("SERVER_MODE", ""),
+			ReadTimeout:  getDuration("SERVER_READ_TIMEOUT", ""),
+			WriteTimeout: getDuration("SERVER_WRITE_TIMEOUT", ""),
 		},
 		Database: DatabaseConfig{
-			Host:            getEnv("DB_HOST", "localhost"),
-			Port:            getEnv("DB_PORT", "5432"),
-			User:            getEnv("DB_USER", "atamlink_user"),
-			Password:        getEnv("DB_PASSWORD", "atamlink_password"),
-			DBName:          getEnv("DB_NAME", "atamlink_db"),
-			SSLMode:         getEnv("DB_SSLMODE", "disable"),
-			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 5),
-			ConnMaxLifetime: getDuration("DB_CONN_MAX_LIFETIME", "5m"),
+			Host:            getEnv("DB_HOST", ""),
+			Port:            getEnv("DB_PORT", ""),
+			User:            getEnv("DB_USER", ""),
+			Password:        getEnv("DB_PASSWORD", ""),
+			DBName:          getEnv("DB_NAME", ""),
+			SSLMode:         getEnv("DB_SSLMODE", ""),
+			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 0),
+			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 0),
+			ConnMaxLifetime: getDuration("DB_CONN_MAX_LIFETIME", ""),
 		},
 		Log: LogConfig{
-			Level:  getEnv("LOG_LEVEL", "debug"),
-			Format: getEnv("LOG_FORMAT", "json"),
+			Level:  getEnv("LOG_LEVEL", ""),
+			Format: getEnv("LOG_FORMAT", ""),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins:   getEnvAsSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
@@ -112,18 +112,17 @@ func Load() *Config {
 			AllowCredentials: getEnvAsBool("CORS_ALLOW_CREDENTIALS", true),
 		},
 		Upload: UploadConfig{
-			MaxSize:      getEnvAsInt64("UPLOAD_MAX_SIZE", 10485760), // 10MB
+			MaxSize:      getEnvAsInt64("UPLOAD_MAX_SIZE", 0), // 10MB
 			AllowedTypes: getEnvAsSlice("UPLOAD_ALLOWED_TYPES", []string{"image/jpeg", "image/png", "image/gif", "image/webp"}),
-			Path:         getEnv("UPLOAD_PATH", "./uploads"),
+			Path:         getEnv("UPLOAD_PATH", ""),
 		},
 		UploadThing: UploadThingConfig{
 			Secret:  getEnv("UPLOADTHING_SECRET", ""),
 			AppID:   getEnv("UPLOADTHING_APP_ID", ""),
-			MaxSize: getEnvAsInt64("UPLOADTHING_MAX_SIZE", 10485760),
 		},
 		API: APIConfig{
-			Prefix:  getEnv("API_PREFIX", "/api/v1"),
-			Timeout: getDuration("API_TIMEOUT", "30s"),
+			Prefix:  getEnv("API_PREFIX", ""),
+			Timeout: getDuration("API_TIMEOUT", ""),
 		},
 		Auth: AuthConfig{
 			Bypass:          getEnvAsBool("AUTH_BYPASS", false),

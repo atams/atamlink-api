@@ -18,22 +18,22 @@ import (
 // CatalogHandler handler untuk catalog endpoints
 type CatalogHandler struct {
 	catalogUC     		usecase.CatalogUseCase
-	// uploadService service.UploadService
-	uploadThingService 	service.UploadThingService
+	uploadService service.UploadService
+	// uploadThingService 	service.UploadThingService
 	validator     		*utils.Validator
 }
 
 // NewCatalogHandler membuat instance catalog handler baru
 func NewCatalogHandler(
 	catalogUC usecase.CatalogUseCase,
-	// uploadService service.UploadService,
-	uploadThingService service.UploadThingService,
+	uploadService service.UploadService,
+	// uploadThingService service.UploadThingService,
 	validator *utils.Validator,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		catalogUC:     catalogUC,
-		// uploadService: uploadService,
-		uploadThingService: uploadThingService,
+		uploadService: uploadService,
+		// uploadThingService: uploadThingService,
 		validator:     validator,
 	}
 }
@@ -645,44 +645,45 @@ func (h *CatalogHandler) UploadCardImage(c *gin.Context) {
 	}
 
 	// Validate file
-	// if err := h.uploadService.ValidateFile(file); err != nil {
-	// 	h.handleError(c, err)
-	// 	return
-	// }
-
-	if err := h.uploadThingService.ValidateFile(file); err != nil {
+	if err := h.uploadService.ValidateFile(file); err != nil {
 		h.handleError(c, err)
 		return
 	}
 
-	// Upload file
-	// folder := fmt.Sprintf("catalogs/cards/%d", cardID)
-	// fileInfo, err := service.ProcessUpload(
-	// 	file,
-	// 	folder,
-	// 	h.uploadService,
-	// 	c.Request.Host,
-	// )
-	// if err != nil {
+	// if err := h.uploadThingService.ValidateFile(file); err != nil {
 	// 	h.handleError(c, err)
 	// 	return
 	// }
 
+	// Upload file
 	folder := fmt.Sprintf("catalogs/cards/%d", cardID)
-    uploadResponse, err := h.uploadThingService.Upload(file, folder)
-    if err != nil {
-        h.handleError(c, err)
-        return
-    }
+	fileInfo, err := service.ProcessUpload(
+		file,
+		folder,
+		h.uploadService,
+		c.Request.Host,
+	)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	// folder := fmt.Sprintf("catalogs/cards/%d", cardID)
+    // uploadResponse, err := h.uploadThingService.Upload(file, folder)
+    // if err != nil {
+    //     h.handleError(c, err)
+    //     return
+    // }
 
 	// TODO: Save media URL to database
 
-	utils.OK(c, "Gambar berhasil diupload", map[string]interface{}{
-        "url":  uploadResponse.URL,
-        "key":  uploadResponse.Key,
-        "name": uploadResponse.Name,
-        "size": uploadResponse.Size,
-    })
+	// utils.OK(c, "Gambar berhasil diupload", map[string]interface{}{
+    //     "url":  uploadResponse.URL,
+    //     "key":  uploadResponse.Key,
+    //     "name": uploadResponse.Name,
+    //     "size": uploadResponse.Size,
+    // })
+	utils.OK(c, "Gambar berhasil diupload", fileInfo)
 }
 
 // handleError menangani error dari use case
