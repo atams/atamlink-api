@@ -67,15 +67,16 @@ type ListFilter struct {
 func (r *businessRepository) Create(tx *sql.Tx, business *entity.Business) error {
 	query := `
 		INSERT INTO atamlink.businesses (
-			b_slug, b_name, b_type, b_is_active, b_is_suspended,
+			b_slug, b_name, b_logo_url, b_type, b_is_active, b_is_suspended,
 			b_created_by, b_created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING b_id`
 
 	err := tx.QueryRow(
 		query,
 		business.Slug,
 		business.Name,
+		business.LogoURL,
 		business.Type,
 		business.IsActive,
 		business.IsSuspended,
@@ -94,7 +95,7 @@ func (r *businessRepository) Create(tx *sql.Tx, business *entity.Business) error
 func (r *businessRepository) GetByID(id int64) (*entity.Business, error) {
 	query := `
 		SELECT 
-			b_id, b_slug, b_name, b_type, b_is_active, b_is_suspended,
+			b_id, b_slug, b_name, b_logo_url, b_type, b_is_active, b_is_suspended,
 			b_suspension_reason, b_suspended_by, b_suspended_at,
 			b_created_by, b_created_at, b_updated_by, b_updated_at
 		FROM atamlink.businesses
@@ -105,6 +106,7 @@ func (r *businessRepository) GetByID(id int64) (*entity.Business, error) {
 		&business.ID,
 		&business.Slug,
 		&business.Name,
+		&business.LogoURL,
 		&business.Type,
 		&business.IsActive,
 		&business.IsSuspended,
@@ -131,7 +133,7 @@ func (r *businessRepository) GetByID(id int64) (*entity.Business, error) {
 func (r *businessRepository) GetBySlug(slug string) (*entity.Business, error) {
 	query := `
 		SELECT 
-			b_id, b_slug, b_name, b_type, b_is_active, b_is_suspended,
+			b_id, b_slug, b_name, b_logo_url, b_type, b_is_active, b_is_suspended,
 			b_suspension_reason, b_suspended_by, b_suspended_at,
 			b_created_by, b_created_at, b_updated_by, b_updated_at
 		FROM atamlink.businesses
@@ -142,6 +144,7 @@ func (r *businessRepository) GetBySlug(slug string) (*entity.Business, error) {
 		&business.ID,
 		&business.Slug,
 		&business.Name,
+		&business.LogoURL,
 		&business.Type,
 		&business.IsActive,
 		&business.IsSuspended,
@@ -169,7 +172,7 @@ func (r *businessRepository) List(filter ListFilter) ([]*entity.Business, int64,
 	// Build query dengan filter
 	qb := database.NewQueryBuilder()
 	qb.Select(
-		"b_id", "b_slug", "b_name", "b_type", "b_is_active", "b_is_suspended",
+		"b_id", "b_slug", "b_name", "b_logo_url", "b_type", "b_is_active", "b_is_suspended",
 		"b_suspension_reason", "b_suspended_by", "b_suspended_at",
 		"b_created_by", "b_created_at", "b_updated_by", "b_updated_at",
 	).From("atamlink.businesses")
@@ -223,6 +226,7 @@ func (r *businessRepository) List(filter ListFilter) ([]*entity.Business, int64,
 			&business.ID,
 			&business.Slug,
 			&business.Name,
+			&business.LogoURL,
 			&business.Type,
 			&business.IsActive,
 			&business.IsSuspended,
@@ -248,20 +252,22 @@ func (r *businessRepository) Update(tx *sql.Tx, business *entity.Business) error
 	query := `
 		UPDATE atamlink.businesses SET
 			b_name = $2,
-			b_type = $3,
-			b_is_active = $4,
-			b_is_suspended = $5,
-			b_suspension_reason = $6,
-			b_suspended_by = $7,
-			b_suspended_at = $8,
-			b_updated_by = $9,
-			b_updated_at = $10
+			b_logo_url = $3,
+			b_type = $4,
+			b_is_active = $5,
+			b_is_suspended = $6,
+			b_suspension_reason = $7,
+			b_suspended_by = $8,
+			b_suspended_at = $9,
+			b_updated_by = $10,
+			b_updated_at = $11
 		WHERE b_id = $1`
 
 	result, err := tx.Exec(
 		query,
 		business.ID,
 		business.Name,
+		business.LogoURL,
 		business.Type,
 		business.IsActive,
 		business.IsSuspended,

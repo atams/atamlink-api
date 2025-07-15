@@ -114,7 +114,7 @@ func (r *catalogRepository) GetByID(id int64) (*entity.Catalog, error) {
 			c.c_id, c.c_b_id, c.c_mt_id, c.c_slug, c.c_qr_url,
 			c.c_title, c.c_subtitle, c.c_is_active, c.c_settings,
 			c.c_created_by, c.c_created_at, c.c_updated_by, c.c_updated_at,
-			b.b_id, b.b_name, b.b_slug,
+			b.b_id, b.b_name, b.b_logo_url, b.b_slug,
 			mt.mt_id, mt.mt_name, mt.mt_type
 		FROM atamlink.catalogs c
 		INNER JOIN atamlink.businesses b ON b.b_id = c.c_b_id
@@ -143,6 +143,7 @@ func (r *catalogRepository) GetByID(id int64) (*entity.Catalog, error) {
 		&catalog.UpdatedAt,
 		&catalog.Business.ID,
 		&catalog.Business.Name,
+		&catalog.Business.LogoURL,
 		&catalog.Business.Slug,
 		&catalog.Theme.ID,
 		&catalog.Theme.Name,
@@ -171,7 +172,7 @@ func (r *catalogRepository) GetBySlug(slug string) (*entity.Catalog, error) {
 			c.c_id, c.c_b_id, c.c_mt_id, c.c_slug, c.c_qr_url,
 			c.c_title, c.c_subtitle, c.c_is_active, c.c_settings,
 			c.c_created_by, c.c_created_at, c.c_updated_by, c.c_updated_at,
-			b.b_id, b.b_name, b.b_slug,
+			b.b_id, b.b_name, b.b_logo_url, b.b_slug,
 			mt.mt_id, mt.mt_name, mt.mt_type
 		FROM atamlink.catalogs c
 		INNER JOIN atamlink.businesses b ON b.b_id = c.c_b_id
@@ -202,6 +203,7 @@ func (r *catalogRepository) GetBySlug(slug string) (*entity.Catalog, error) {
 		&catalog.UpdatedAt,
 		&catalog.Business.ID,
 		&catalog.Business.Name,
+		&catalog.Business.LogoURL,
 		&catalog.Business.Slug,
 		&catalog.Theme.ID,
 		&catalog.Theme.Name,
@@ -231,7 +233,7 @@ func (r *catalogRepository) List(filter ListFilter) ([]*entity.Catalog, int64, e
 		"c.c_id", "c.c_b_id", "c.c_mt_id", "c.c_slug", "c.c_qr_url",
 		"c.c_title", "c.c_subtitle", "c.c_is_active", "c.c_settings",
 		"c.c_created_by", "c.c_created_at", "c.c_updated_by", "c.c_updated_at",
-		"b.b_name", "mt.mt_name",
+		"b.b_name", "b.b_logo_url", "mt.mt_name",
 	).From("atamlink.catalogs c")
 	qb.InnerJoin("atamlink.businesses b", "b.b_id = c.c_b_id")
 	qb.InnerJoin("atamlink.master_themes mt", "mt.mt_id = c.c_mt_id")
@@ -296,6 +298,7 @@ func (r *catalogRepository) List(filter ListFilter) ([]*entity.Catalog, int64, e
 			&catalog.UpdatedBy,
 			&catalog.UpdatedAt,
 			&catalog.Business.Name,
+			&catalog.Business.LogoURL,
 			&catalog.Theme.Name,
 		)
 		if err != nil {

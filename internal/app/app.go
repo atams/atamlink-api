@@ -19,12 +19,12 @@ import (
 	auditRepo "github.com/atam/atamlink/internal/mod_audit/repository"
 	businessRepo "github.com/atam/atamlink/internal/mod_business/repository"
 	"github.com/atam/atamlink/internal/mod_business/usecase"
-	catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
-	catalogUC "github.com/atam/atamlink/internal/mod_catalog/usecase"
-	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
-	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
+	// catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
+	// catalogUC "github.com/atam/atamlink/internal/mod_catalog/usecase"
+	// masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
+	// masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
-	userUC "github.com/atam/atamlink/internal/mod_user/usecase"
+	// userUC "github.com/atam/atamlink/internal/mod_user/usecase"
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/logger"
@@ -64,13 +64,13 @@ func New() (*App, error) {
 	// Services
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
-	uploadService := service.NewUploadService(cfg.Upload)
+	// uploadService := service.NewUploadService(cfg.Upload)
 	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
 	businessRepository := businessRepo.NewBusinessRepository(db)
-	catalogRepository := catalogRepo.NewCatalogRepository(db)
-	masterRepository := masterRepo.NewMasterRepository(db)
+	// catalogRepository := catalogRepo.NewCatalogRepository(db)
+	// masterRepository := masterRepo.NewMasterRepository(db)
 	auditRepository := auditRepo.NewAuditRepository(db)
 
 	// Start audit service
@@ -79,16 +79,16 @@ func New() (*App, error) {
 
 	// Use Cases
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
-	catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
-	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
-	userUseCase := userUC.NewUserUseCase(db, userRepository)
+	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
+	// masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
+	// userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, validator)
-	catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
-	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
-	userHandler := handler.NewUserHandler(userUseCase, validator)
+	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
+	// masterHandler := handler.NewMasterHandler(masterUseCase, validator)
+	// userHandler := handler.NewUserHandler(userUseCase, validator)
 
 	// Inisialisasi router Gin
 	if cfg.Server.Mode == "release" {
@@ -105,7 +105,8 @@ func New() (*App, error) {
 	setupSwagger(router, cfg)
 
 	// Daftarkan semua rute
-	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
+	// setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, nil, nil)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -221,48 +222,48 @@ func setupRoutes(
 		}
 
 		// Rute untuk modul Catalog
-		catalogs := api.Group("/catalogs")
-		{
-			catalogs.POST("", catalogHandler.Create)
-			catalogs.GET("", catalogHandler.List)
-			catalogs.GET("/:id", catalogHandler.GetByID)
-			catalogs.PUT("/:id", catalogHandler.Update)
-			catalogs.DELETE("/:id", catalogHandler.Delete)
-			// TODO: Tambahkan rute untuk section dan card management
-		}
+		// catalogs := api.Group("/catalogs")
+		// {
+		// 	catalogs.POST("", catalogHandler.Create)
+		// 	catalogs.GET("", catalogHandler.List)
+		// 	catalogs.GET("/:id", catalogHandler.GetByID)
+		// 	catalogs.PUT("/:id", catalogHandler.Update)
+		// 	catalogs.DELETE("/:id", catalogHandler.Delete)
+		// 	// TODO: Tambahkan rute untuk section dan card management
+		// }
 
-		// Rute untuk modul Master Data
-		masters := api.Group("/masters")
-		{
-			// Plans CRUD
-			masters.POST("/plans", masterHandler.CreatePlan)
-			masters.GET("/plans", masterHandler.ListPlans)
-			masters.GET("/plans/:id", masterHandler.GetPlanByID)
-			masters.PUT("/plans/:id", masterHandler.UpdatePlan)
-			masters.DELETE("/plans/:id", masterHandler.DeletePlan)
+		// // Rute untuk modul Master Data
+		// masters := api.Group("/masters")
+		// {
+		// 	// Plans CRUD
+		// 	masters.POST("/plans", masterHandler.CreatePlan)
+		// 	masters.GET("/plans", masterHandler.ListPlans)
+		// 	masters.GET("/plans/:id", masterHandler.GetPlanByID)
+		// 	masters.PUT("/plans/:id", masterHandler.UpdatePlan)
+		// 	masters.DELETE("/plans/:id", masterHandler.DeletePlan)
 
-			// Themes CRUD
-			masters.POST("/themes", masterHandler.CreateTheme)
-			masters.GET("/themes", masterHandler.ListThemes)
-			masters.GET("/themes/:id", masterHandler.GetThemeByID)
-			masters.PUT("/themes/:id", masterHandler.UpdateTheme)
-			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
-		}
+		// 	// Themes CRUD
+		// 	masters.POST("/themes", masterHandler.CreateTheme)
+		// 	masters.GET("/themes", masterHandler.ListThemes)
+		// 	masters.GET("/themes/:id", masterHandler.GetThemeByID)
+		// 	masters.PUT("/themes/:id", masterHandler.UpdateTheme)
+		// 	masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
+		// }
 
-		profile := api.Group("/profile")
-		{
-			profile.GET("", userHandler.GetProfile)
-			profile.POST("", userHandler.CreateProfile)
-			profile.PUT("", userHandler.UpdateProfile)
-			profile.DELETE("", userHandler.DeleteProfile)
-		}
+		// profile := api.Group("/profile")
+		// {
+		// 	profile.GET("", userHandler.GetProfile)
+		// 	profile.POST("", userHandler.CreateProfile)
+		// 	profile.PUT("", userHandler.UpdateProfile)
+		// 	profile.DELETE("", userHandler.DeleteProfile)
+		// }
 
-		// Rute untuk User Management (admin)
-		users := api.Group("/users")
-		{
-			users.GET("/profiles/:id", userHandler.GetProfileByID)
-			users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
-			users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
-		}
+		// // Rute untuk User Management (admin)
+		// users := api.Group("/users")
+		// {
+		// 	users.GET("/profiles/:id", userHandler.GetProfileByID)
+		// 	users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
+		// 	users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
+		// }
 	}
 }

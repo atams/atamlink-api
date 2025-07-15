@@ -202,6 +202,7 @@ type CatalogTestimonial struct {
 type Business struct {
 	ID       int64  `json:"id" db:"b_id"`
 	Name     string `json:"name" db:"b_name"`
+	LogoURL  sql.NullString `json:"logo_url" db:"b_logo_url"`
 	Slug     string `json:"slug" db:"b_slug"`
 	Type     string `json:"type" db:"b_type"`
 	IsActive bool   `json:"is_active" db:"b_is_active"`

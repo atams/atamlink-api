@@ -160,6 +160,7 @@ CREATE TABLE atamlink.businesses (
     b_id BIGSERIAL PRIMARY KEY,
     b_slug VARCHAR(100) NOT NULL UNIQUE,
     b_name VARCHAR(200) NOT NULL,
+    b_logo_url VARCHAR,
     b_type business_type NOT NULL,
     b_is_active BOOLEAN NOT NULL DEFAULT true,
     b_is_suspended BOOLEAN NOT NULL DEFAULT false,

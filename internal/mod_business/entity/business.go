@@ -10,6 +10,7 @@ type Business struct {
 	ID               int64          `json:"id" db:"b_id"`
 	Slug             string         `json:"slug" db:"b_slug"`
 	Name             string         `json:"name" db:"b_name"`
+	LogoURL          sql.NullString `json:"logo_url" db:"b_logo_url"`
 	Type             string         `json:"type" db:"b_type"`
 	IsActive         bool           `json:"is_active" db:"b_is_active"`
 	IsSuspended      bool           `json:"is_suspended" db:"b_is_suspended"`
