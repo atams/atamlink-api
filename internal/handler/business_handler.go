@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/usecase"
+	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/errors"
 	"github.com/atam/atamlink/pkg/utils"
 )
@@ -16,13 +18,19 @@ import (
 // BusinessHandler handler untuk business endpoints
 type BusinessHandler struct {
 	businessUC usecase.BusinessUseCase
+	uploadService service.UploadService
 	validator  *utils.Validator
 }
 
 // NewBusinessHandler membuat instance business handler baru
-func NewBusinessHandler(businessUC usecase.BusinessUseCase, validator *utils.Validator) *BusinessHandler {
+func NewBusinessHandler(
+	businessUC usecase.BusinessUseCase,
+	uploadService service.UploadService,
+	validator *utils.Validator,
+) *BusinessHandler {
 	return &BusinessHandler{
 		businessUC: businessUC,
+		uploadService: uploadService,
 		validator:  validator,
 	}
 }
@@ -31,9 +39,12 @@ func NewBusinessHandler(businessUC usecase.BusinessUseCase, validator *utils.Val
 // @Summary Create business
 // @Description Create new business
 // @Tags businesses
-// @Accept json
+// @Accept multipart/form-data
 // @Produce json
-// @Param body body dto.CreateBusinessRequest true "Business data"
+// @Param name formData string true "Business name"
+// @Param slug formData string false "Business slug"
+// @Param type formData string true "Business type"
+// @Param logo formData file false "Logo image file (max 10MB, JPG/PNG)"
 // @Success 201 {object} utils.Response{data=dto.BusinessResponse}
 // @Failure 400 {object} utils.Response
 // @Failure 401 {object} utils.Response
@@ -48,21 +59,45 @@ func (h *BusinessHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Bind request
-	var req dto.CreateBusinessRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequest(c, constant.ErrMsgBadRequest)
+	// Parse multipart form dengan batas maksimal 32MB
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		utils.BadRequest(c, "Gagal memproses form data")
 		return
 	}
 
-	// Validate request
+	// Bind request dari form data
+	var req dto.CreateBusinessRequest
+	
+	// Manual binding untuk multipart form
+	req.Name = c.PostForm("name")
+	req.Slug = c.PostForm("slug")
+	req.Type = c.PostForm("type")
+	
+	// Handle file upload jika ada
+	file, err := c.FormFile("logo")
+	if err == nil && file != nil {
+		req.LogoFile = file
+	}
+
+	// Validasi field required
+	if req.Name == "" {
+		utils.BadRequest(c, "Field 'name' wajib diisi")
+		return
+	}
+	
+	if req.Type == "" {
+		utils.BadRequest(c, "Field 'type' wajib diisi")
+		return
+	}
+
+	// Validate request menggunakan validator
 	if errors := h.validator.Validate(req); len(errors) > 0 {
 		utils.ValidationError(c, errors)
 		return
 	}
 
 	// Create business
-	business, err := h.businessUC.Create(profileID, &req)
+	business, err := h.businessUC.Create(c, profileID, &req)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -187,10 +222,13 @@ func (h *BusinessHandler) GetByID(c *gin.Context) {
 // @Summary Update business
 // @Description Update business data
 // @Tags businesses
-// @Accept json
+// @Accept multipart/form-data
 // @Produce json
 // @Param id path int true "Business ID"
-// @Param body body dto.UpdateBusinessRequest true "Update data"
+// @Param name formData string false "Business name"
+// @Param type formData string false "Business type"
+// @Param is_active formData bool false "Active status"
+// @Param logo formData file false "Logo image file (max 10MB, JPG/PNG)"
 // @Success 200 {object} utils.Response{data=dto.BusinessResponse}
 // @Failure 400 {object} utils.Response
 // @Failure 401 {object} utils.Response
@@ -213,17 +251,51 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// Bind request
+	// Deteksi content type
+	contentType := c.GetHeader("Content-Type")
 	var req dto.UpdateBusinessRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequest(c, constant.ErrMsgBadRequest)
-		return
+
+	// Handle berdasarkan content type
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Parse multipart form
+		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+			utils.BadRequest(c, "Gagal memproses form data")
+			return
+		}
+
+		// Manual binding untuk multipart form
+		req.Name = c.PostForm("name")
+		req.Type = c.PostForm("type")
+		
+		// Handle is_active boolean
+		if isActiveStr := c.PostForm("is_active"); isActiveStr != "" {
+			isActive, err := strconv.ParseBool(isActiveStr)
+			if err != nil {
+				utils.BadRequest(c, "Field 'is_active' harus berupa boolean")
+				return
+			}
+			req.IsActive = &isActive
+		}
+		
+		// Handle file upload jika ada
+		file, err := c.FormFile("logo")
+		if err == nil && file != nil {
+			req.LogoFile = file
+		}
+	} else {
+		// Handle JSON request
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.BadRequest(c, constant.ErrMsgBadRequest)
+			return
+		}
 	}
 
-	// Validate request
-	if errors := h.validator.Validate(req); len(errors) > 0 {
-		utils.ValidationError(c, errors)
-		return
+	// Validate request jika ada field yang diisi
+	if req.Name != "" || req.Type != "" || req.LogoFile != nil {
+		if errors := h.validator.Validate(req); len(errors) > 0 {
+			utils.ValidationError(c, errors)
+			return
+		}
 	}
 
 	// Update business

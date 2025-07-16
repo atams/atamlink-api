@@ -58,6 +58,15 @@ type UploadConfig struct {
 	MaxSize      int64
 	AllowedTypes []string
 	Path         string
+	Cloudinary   CloudinaryConfig
+}
+
+// CloudinaryConfig konfigurasi untuk Cloudinary
+type CloudinaryConfig struct {
+	CloudName string
+	APIKey    string
+	APISecret string
+	Folder    string
 }
 
 // APIConfig konfigurasi API
@@ -107,6 +116,12 @@ func Load() *Config {
 			MaxSize:      getEnvAsInt64("UPLOAD_MAX_SIZE", 0), // 10MB
 			AllowedTypes: getEnvAsSlice("UPLOAD_ALLOWED_TYPES", []string{"image/jpeg", "image/png", "image/jpg"}),
 			Path:         getEnv("UPLOAD_PATH", ""),
+			Cloudinary: CloudinaryConfig{
+				CloudName: getEnv("CLOUDINARY_CLOUD_NAME", ""),
+				APIKey:    getEnv("CLOUDINARY_API_KEY", ""),
+				APISecret: getEnv("CLOUDINARY_API_SECRET", ""),
+				Folder:    getEnv("CLOUDINARY_FOLDER", "atamlink"),
+			},
 		},
 		API: APIConfig{
 			Prefix:  getEnv("API_PREFIX", ""),

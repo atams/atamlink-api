@@ -25,8 +25,8 @@ type AuditEntry struct {
 	Action        string
 	Table         string
 	RecordID      string
-	OldData       interface{}
-	NewData       interface{}
+	OldData       json.RawMessage
+	NewData       json.RawMessage
 	Context       map[string]interface{}
 	Reason        string
 }
@@ -69,25 +69,25 @@ func (s *auditService) Stop() {
 // Log menambahkan entry ke queue
 func (s *auditService) Log(entry *AuditEntry) {
 	// Convert data to JSON
-	var oldDataJSON, newDataJSON json.RawMessage
+	// var oldDataJSON, newDataJSON json.RawMessage
 	
-	if entry.OldData != nil {
-		data, err := json.Marshal(entry.OldData)
-		if err != nil {
-			s.log.Error("Failed to marshal old data", logger.Error(err))
-			return
-		}
-		oldDataJSON = data
-	}
+	// if entry.OldData != nil {
+	// 	data, err := json.Marshal(entry.OldData)
+	// 	if err != nil {
+	// 		s.log.Error("Failed to marshal old data", logger.Error(err))
+	// 		return
+	// 	}
+	// 	oldDataJSON = data
+	// }
 	
-	if entry.NewData != nil {
-		data, err := json.Marshal(entry.NewData)
-		if err != nil {
-			s.log.Error("Failed to marshal new data", logger.Error(err))
-			return
-		}
-		newDataJSON = data
-	}
+	// if entry.NewData != nil {
+	// 	data, err := json.Marshal(entry.NewData)
+	// 	if err != nil {
+	// 		s.log.Error("Failed to marshal new data", logger.Error(err))
+	// 		return
+	// 	}
+	// 	newDataJSON = data
+	// }
 
 	// Create audit log
 	auditLog := &entity.AuditLog{
@@ -97,8 +97,10 @@ func (s *auditService) Log(entry *AuditEntry) {
 		Action:        entry.Action,
 		Table:     	   entry.Table,
 		RecordID:      entry.RecordID,
-		OldData:       oldDataJSON,
-		NewData:       newDataJSON,
+		// OldData:       oldDataJSON,
+		// NewData:       newDataJSON,
+		OldData:       entry.OldData,
+		NewData:       entry.NewData,
 		Context:       entry.Context,
 		Reason:        entry.Reason,
 	}

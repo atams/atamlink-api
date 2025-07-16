@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"mime/multipart"
 	"time"
 )
 
@@ -9,6 +10,7 @@ type CreateBusinessRequest struct {
 	Name string `json:"name" validate:"required,min=3,max=200"`
 	Slug string `json:"slug,omitempty" validate:"omitempty,slug,min=3,max=100"`
 	Type string `json:"type" validate:"required,oneof=retail service manufacturing technology hospitality healthcare education other"`
+	LogoFile *multipart.FileHeader `form:"logo"`
 }
 
 // UpdateBusinessRequest request untuk update business
@@ -16,6 +18,7 @@ type UpdateBusinessRequest struct {
 	Name     string `json:"name,omitempty" validate:"omitempty,min=3,max=200"`
 	Type     string `json:"type,omitempty" validate:"omitempty,oneof=retail service manufacturing technology hospitality healthcare education other"`
 	IsActive *bool  `json:"is_active,omitempty"`
+	LogoFile *multipart.FileHeader `form:"logo"`
 }
 
 // BusinessResponse response untuk business
@@ -23,6 +26,7 @@ type BusinessResponse struct {
 	ID               int64                  `json:"id"`
 	Slug             string                 `json:"slug"`
 	Name             string                 `json:"name"`
+	LogoURL          *string                `json:"logo_url,omitempty"`
 	Type             string                 `json:"type"`
 	IsActive         bool                   `json:"is_active"`
 	IsSuspended      bool                   `json:"is_suspended"`
@@ -39,6 +43,7 @@ type BusinessListResponse struct {
 	ID          int64      `json:"id"`
 	Slug        string     `json:"slug"`
 	Name        string     `json:"name"`
+	LogoURL     *string    `json:"logo_url,omitempty"`
 	Type        string     `json:"type"`
 	IsActive    bool       `json:"is_active"`
 	IsSuspended bool       `json:"is_suspended"`

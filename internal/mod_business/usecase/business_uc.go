@@ -14,14 +14,13 @@ import (
 	"github.com/atam/atamlink/internal/mod_business/repository"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
 	"github.com/atam/atamlink/internal/service"
-	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/errors"
 	"github.com/google/uuid"
 )
 
 // BusinessUseCase interface untuk business use case
 type BusinessUseCase interface {
-	Create(profileID int64, req *dto.CreateBusinessRequest) (*dto.BusinessResponse, error)
+	Create(ctx *gin.Context, profileID int64, req *dto.CreateBusinessRequest) (*dto.BusinessResponse, error)
 	GetByID(id int64, profileID int64) (*dto.BusinessResponse, error)
 	GetBySlug(slug string) (*dto.BusinessResponse, error)
 	List(profileID int64, filter *dto.BusinessFilter, page, perPage int, orderBy string) ([]*dto.BusinessListResponse, int64, error)
@@ -43,6 +42,7 @@ type businessUseCase struct {
 	businessRepo repository.BusinessRepository
 	userRepo     userRepo.UserRepository
 	slugService  service.SlugService
+	uploadService service.UploadService
 }
 
 // NewBusinessUseCase membuat instance business use case baru
@@ -51,17 +51,19 @@ func NewBusinessUseCase(
 	businessRepo repository.BusinessRepository,
 	userRepo userRepo.UserRepository,
 	slugService service.SlugService,
+	uploadService service.UploadService,
 ) BusinessUseCase {
 	return &businessUseCase{
 		db:           db,
 		businessRepo: businessRepo,
 		userRepo:     userRepo,
 		slugService:  slugService,
+		uploadService: uploadService,
 	}
 }
 
 // Create membuat business baru
-func (uc *businessUseCase) Create(profileID int64, req *dto.CreateBusinessRequest) (*dto.BusinessResponse, error) {
+func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.CreateBusinessRequest) (*dto.BusinessResponse, error) {
 	// Validasi business type
 	if !constant.IsValidBusinessType(req.Type) {
 		return nil, errors.New(errors.ErrValidation, constant.ErrMsgBusinessTypeInvalid, 400)
@@ -116,7 +118,32 @@ func (uc *businessUseCase) Create(profileID int64, req *dto.CreateBusinessReques
 		CreatedAt: time.Now(),
 	}
 
+	// Handle logo upload jika ada
+	var uploadedLogoURL string
+	if req.LogoFile != nil {
+		// Upload logo ke Cloudinary sebagai thumbnail
+		logoURL, err := uc.uploadService.UploadImageToCloudinary(req.LogoFile, "thumbnail")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to upload logo")
+		}
+		uploadedLogoURL = logoURL
+		business.LogoURL = sql.NullString{
+			String: logoURL,
+			Valid:  true,
+		}
+	}
+
+	// Create business
 	if err := uc.businessRepo.Create(tx, business); err != nil {
+		// Jika create gagal dan logo sudah diupload, hapus dari Cloudinary
+		if uploadedLogoURL != "" {
+			// Extract public ID dari URL untuk delete
+			// Note: Dalam implementasi real, kita perlu extract public ID dari URL
+			go func() {
+				// Best effort delete, tidak perlu handle error
+				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+			}()
+		}
 		return nil, err
 	}
 
@@ -131,11 +158,23 @@ func (uc *businessUseCase) Create(profileID int64, req *dto.CreateBusinessReques
 	}
 
 	if err := uc.businessRepo.AddUser(tx, businessUser); err != nil {
+		// Rollback upload jika add user gagal
+		if uploadedLogoURL != "" {
+			go func() {
+				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+			}()
+		}
 		return nil, err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
+		// Rollback upload jika commit gagal
+		if uploadedLogoURL != "" {
+			go func() {
+				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+			}()
+		}
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
@@ -236,7 +275,7 @@ func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, pag
 	return responses, total, nil
 }
 
-// Update update business
+// GetByID mendapatkan business by ID
 func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error) {
 	// Get existing business
 	business, err := uc.businessRepo.GetByID(id)
@@ -259,6 +298,19 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		return nil, errors.New(errors.ErrValidation, constant.ErrMsgBusinessTypeInvalid, 400)
 	}
 
+	// Start transaction
+	tx, err := uc.db.Begin()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin transaction")
+	}
+	defer tx.Rollback()
+
+	// Track old logo URL untuk potential cleanup
+	oldLogoURL := ""
+	if business.LogoURL.Valid {
+		oldLogoURL = business.LogoURL.String
+	}
+
 	// Update fields
 	if req.Name != "" {
 		business.Name = req.Name
@@ -270,25 +322,60 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		business.IsActive = *req.IsActive
 	}
 
-	business.UpdatedBy = database.NullInt64(profileID)
-	business.UpdatedAt = &[]time.Time{time.Now()}[0]
-
-	// Update in transaction
-	tx, err := uc.db.Begin()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin transaction")
+	// Handle logo upload jika ada
+	var uploadedLogoURL string
+	if req.LogoFile != nil {
+		// Upload logo baru ke Cloudinary
+		logoURL, err := uc.uploadService.UploadImageToCloudinary(req.LogoFile, "thumbnail")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to upload logo")
+		}
+		uploadedLogoURL = logoURL
+		business.LogoURL = sql.NullString{
+			String: logoURL,
+			Valid:  true,
+		}
 	}
-	defer tx.Rollback()
 
+	// Update metadata
+	business.UpdatedBy = sql.NullInt64{
+		Int64: profileID,
+		Valid: true,
+	}
+	business.UpdatedAt = &time.Time{}
+	*business.UpdatedAt = time.Now()
+
+	// Execute update
 	if err := uc.businessRepo.Update(tx, business); err != nil {
+		// Rollback upload jika update gagal
+		if uploadedLogoURL != "" {
+			go func() {
+				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+			}()
+		}
 		return nil, err
 	}
 
+	// Commit transaction
 	if err := tx.Commit(); err != nil {
+		// Rollback upload jika commit gagal
+		if uploadedLogoURL != "" {
+			go func() {
+				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+			}()
+		}
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
-	// Return updated business
+	// Jika ada logo lama dan berhasil upload logo baru, hapus logo lama
+	if oldLogoURL != "" && uploadedLogoURL != "" {
+		go func() {
+			// Best effort delete old logo
+			_ = uc.uploadService.DeleteFromCloudinary(oldLogoURL)
+		}()
+	}
+
+	// Get updated business
 	return uc.GetByID(id, profileID)
 }
 
@@ -633,6 +720,11 @@ func (uc *businessUseCase) toBusinessResponse(business *entity.Business, users [
 		CreatedBy:        business.CreatedBy,
 		CreatedAt:        business.CreatedAt,
 		UpdatedAt:        business.UpdatedAt,
+	}
+	
+	// Add LogoURL if valid
+	if business.LogoURL.Valid {
+		resp.LogoURL = &business.LogoURL.String
 	}
 
 	// Add users

@@ -64,7 +64,7 @@ func New() (*App, error) {
 	// Services
 	validator := utils.NewValidator()
 	slugService := service.NewSlugService()
-	// uploadService := service.NewUploadService(cfg.Upload)
+	uploadService := service.NewUploadService(cfg.Upload)
 	
 	// Repositories
 	userRepository := userRepo.NewUserRepository(db)
@@ -78,14 +78,14 @@ func New() (*App, error) {
 	auditService.Start()
 
 	// Use Cases
-	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService)
+	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService, uploadService)
 	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
 	// masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
 	// userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
-	businessHandler := handler.NewBusinessHandler(businessUseCase, validator)
+	businessHandler := handler.NewBusinessHandler(businessUseCase, uploadService, validator)
 	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
 	// masterHandler := handler.NewMasterHandler(masterUseCase, validator)
 	// userHandler := handler.NewUserHandler(userUseCase, validator)

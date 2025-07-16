@@ -85,12 +85,18 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 			bodyBytes, _ := io.ReadAll(c.Request.Body)
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 			
+			// if len(bodyBytes) > 0 && int64(len(bodyBytes)) <= config.MaxBodySize {
+			// 	var body interface{}
+			// 	if err := json.Unmarshal(bodyBytes, &body); err == nil {
+			// 		requestBody = body
+			// 	} else {
+			// 		requestBody = string(bodyBytes)
+			// 	}
+			// }
 			if len(bodyBytes) > 0 && int64(len(bodyBytes)) <= config.MaxBodySize {
-				var body interface{}
-				if err := json.Unmarshal(bodyBytes, &body); err == nil {
-					requestBody = body
-				} else {
-					requestBody = string(bodyBytes)
+				// Attempt to unmarshal into RawMessage, if it fails, marshal as a string
+				if err := json.Unmarshal(bodyBytes, &requestBody); err != nil {
+					requestBody, _ = json.Marshal(string(bodyBytes))
 				}
 			}
 		}
@@ -133,14 +139,24 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 				"request_id":   c.GetString("requestID"),
 			}
 
-			// Add response body if configured
-			var responseBody interface{}
+			// // Add response body if configured
+			// var responseBody interface{}
+			// if config.RecordResponseBody && blw.body.Len() > 0 && 
+			//    int64(blw.body.Len()) <= config.MaxBodySize &&
+			//    c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
+			// 	var body interface{}
+			// 	if err := json.Unmarshal(blw.body.Bytes(), &body); err == nil {
+			// 		responseBody = body
+			// 	}
+			// }
+			var responseBody json.RawMessage 
 			if config.RecordResponseBody && blw.body.Len() > 0 && 
 			   int64(blw.body.Len()) <= config.MaxBodySize &&
 			   c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
-				var body interface{}
-				if err := json.Unmarshal(blw.body.Bytes(), &body); err == nil {
-					responseBody = body
+				// Attempt to unmarshal into RawMessage, if it fails, marshal as a string
+				if err := json.Unmarshal(blw.body.Bytes(), &responseBody); err != nil {
+					// responseBody, _ = json.Marshal(blw.body.String())
+					responseBody = json.RawMessage(strconv.Quote(blw.body.String()))
 				}
 			}
 
@@ -152,7 +168,8 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 				Table:         table,
 				RecordID:      recordID,
 				OldData:       nil, // Will be set for UPDATE operations
-				NewData:       requestBody,
+				// NewData:       requestBody,
+				NewData:       responseBody,
 				Context:       ctx,
 			}
 
