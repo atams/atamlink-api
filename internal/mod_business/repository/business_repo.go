@@ -40,6 +40,11 @@ type BusinessRepository interface {
 	// Helper methods
 	IsSlugExists(slug string) (bool, error)
 	CountUserBusinesses(profileID int64) (int, error)
+
+	// New methods untuk user count dan role
+	GetUserCountByBusinessID(businessID int64) (int, error)
+	GetUserRoleInBusiness(businessID, profileID int64) (string, error)
+	GetBusinessesWithUserCount(filter ListFilter) ([]*BusinessWithUserCount, int64, error)
 }
 
 type businessRepository struct {
@@ -55,7 +60,7 @@ func NewBusinessRepository(db *sql.DB) BusinessRepository {
 type ListFilter struct {
 	Search      string
 	Type        string
-	IsActive    *bool
+	// IsActive    *bool
 	IsSuspended *bool
 	ProfileID   int64
 	Limit       int
@@ -94,7 +99,7 @@ func (r *businessRepository) Create(tx *sql.Tx, business *entity.Business) error
 // GetByID mendapatkan business berdasarkan ID
 func (r *businessRepository) GetByID(id int64) (*entity.Business, error) {
 	query := `
-		SELECT 
+		SELECT
 			b_id, b_slug, b_name, b_logo_url, b_type, b_is_active, b_is_suspended,
 			b_suspension_reason, b_suspended_by, b_suspended_at,
 			b_created_by, b_created_at, b_updated_by, b_updated_at
@@ -132,7 +137,7 @@ func (r *businessRepository) GetByID(id int64) (*entity.Business, error) {
 // GetBySlug mendapatkan business berdasarkan slug
 func (r *businessRepository) GetBySlug(slug string) (*entity.Business, error) {
 	query := `
-		SELECT 
+		SELECT
 			b_id, b_slug, b_name, b_logo_url, b_type, b_is_active, b_is_suspended,
 			b_suspension_reason, b_suspended_by, b_suspended_at,
 			b_created_by, b_created_at, b_updated_by, b_updated_at
@@ -177,6 +182,9 @@ func (r *businessRepository) List(filter ListFilter) ([]*entity.Business, int64,
 		"b_created_by", "b_created_at", "b_updated_by", "b_updated_at",
 	).From("atamlink.businesses")
 
+	// Force only active businesses (konsisten dengan soft delete)
+	qb.Where("b_is_active = true")
+
 	// Apply filters
 	if filter.Search != "" {
 		qb.Where("(LOWER(b_name) LIKE LOWER($1) OR LOWER(b_slug) LIKE LOWER($1))", "%"+filter.Search+"%")
@@ -186,9 +194,10 @@ func (r *businessRepository) List(filter ListFilter) ([]*entity.Business, int64,
 		qb.Where("b_type = ?", filter.Type)
 	}
 
-	if filter.IsActive != nil {
-		qb.Where("b_is_active = ?", *filter.IsActive)
-	}
+	// Note: IsActive filter dihapus karena sudah di-force ke true
+	// if filter.IsActive != nil {
+	//     qb.Where("b_is_active = ?", *filter.IsActive)
+	// }
 
 	if filter.IsSuspended != nil {
 		qb.Where("b_is_suspended = ?", *filter.IsSuspended)
@@ -297,7 +306,7 @@ func (r *businessRepository) Update(tx *sql.Tx, business *entity.Business) error
 // Delete soft delete business
 func (r *businessRepository) Delete(tx *sql.Tx, id int64) error {
 	query := `
-		UPDATE atamlink.businesses 
+		UPDATE atamlink.businesses
 		SET b_is_active = false, b_updated_at = $2
 		WHERE b_id = $1`
 
@@ -346,8 +355,8 @@ func (r *businessRepository) AddUser(tx *sql.Tx, businessUser *entity.BusinessUs
 // GetUsersByBusinessID mendapatkan users by business ID
 func (r *businessRepository) GetUsersByBusinessID(businessID int64) ([]*entity.BusinessUser, error) {
 	query := `
-		SELECT 
-			bu.bu_id, bu.bu_b_id, bu.bu_up_id, bu.bu_role, 
+		SELECT
+			bu.bu_id, bu.bu_b_id, bu.bu_up_id, bu.bu_role,
 			bu.bu_is_owner, bu.bu_is_active, bu.bu_created_at,
 			up.up_phone, up.up_display_name
 		FROM atamlink.business_users bu
@@ -418,7 +427,7 @@ func (r *businessRepository) GetUserByBusinessAndProfile(businessID, profileID i
 // UpdateUserRole update user role
 func (r *businessRepository) UpdateUserRole(tx *sql.Tx, businessID, profileID int64, role string) error {
 	query := `
-		UPDATE atamlink.business_users 
+		UPDATE atamlink.business_users
 		SET bu_role = $3
 		WHERE bu_b_id = $1 AND bu_up_id = $2`
 
@@ -442,7 +451,7 @@ func (r *businessRepository) UpdateUserRole(tx *sql.Tx, businessID, profileID in
 // RemoveUser remove user dari business
 func (r *businessRepository) RemoveUser(tx *sql.Tx, businessID, profileID int64) error {
 	query := `
-		UPDATE atamlink.business_users 
+		UPDATE atamlink.business_users
 		SET bu_is_active = false
 		WHERE bu_b_id = $1 AND bu_up_id = $2`
 
@@ -467,7 +476,7 @@ func (r *businessRepository) RemoveUser(tx *sql.Tx, businessID, profileID int64)
 func (r *businessRepository) CreateInvite(tx *sql.Tx, invite *entity.BusinessInvite) error {
 	query := `
 		INSERT INTO atamlink.business_invites (
-			bi_b_id, bi_token, bi_role, bi_invited_by, 
+			bi_b_id, bi_token, bi_role, bi_invited_by,
 			bi_is_used, bi_expires_at, bi_created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING bi_id`
@@ -493,7 +502,7 @@ func (r *businessRepository) CreateInvite(tx *sql.Tx, invite *entity.BusinessInv
 // GetInviteByToken mendapatkan invite by token
 func (r *businessRepository) GetInviteByToken(token string) (*entity.BusinessInvite, error) {
 	query := `
-		SELECT 
+		SELECT
 			bi_id, bi_b_id, bi_token, bi_role, bi_invited_by,
 			bi_is_used, bi_expires_at, bi_created_at
 		FROM atamlink.business_invites
@@ -524,7 +533,7 @@ func (r *businessRepository) GetInviteByToken(token string) (*entity.BusinessInv
 // UseInvite mark invite as used
 func (r *businessRepository) UseInvite(tx *sql.Tx, token string) error {
 	query := `
-		UPDATE atamlink.business_invites 
+		UPDATE atamlink.business_invites
 		SET bi_is_used = true
 		WHERE bi_token = $1 AND bi_is_used = false`
 
@@ -548,14 +557,14 @@ func (r *businessRepository) UseInvite(tx *sql.Tx, token string) error {
 // GetActiveSubscription mendapatkan active subscription
 func (r *businessRepository) GetActiveSubscription(businessID int64) (*entity.BusinessSubscription, error) {
 	query := `
-		SELECT 
+		SELECT
 			bs.bs_id, bs.bs_b_id, bs.bs_mp_id, bs.bs_status,
 			bs.bs_starts_at, bs.bs_expires_at, bs.bs_created_at, bs.bs_updated_at,
 			mp.mp_id, mp.mp_name, mp.mp_price, mp.mp_features
 		FROM atamlink.business_subscriptions bs
 		INNER JOIN atamlink.master_plans mp ON mp.mp_id = bs.bs_mp_id
-		WHERE bs.bs_b_id = $1 
-			AND bs.bs_status = 'active' 
+		WHERE bs.bs_b_id = $1
+			AND bs.bs_status = 'active'
 			AND bs.bs_expires_at > NOW()
 		ORDER BY bs.bs_created_at DESC
 		LIMIT 1`
@@ -599,7 +608,7 @@ func (r *businessRepository) GetActiveSubscription(businessID int64) (*entity.Bu
 func (r *businessRepository) CreateSubscription(tx *sql.Tx, subscription *entity.BusinessSubscription) error {
 	query := `
 		INSERT INTO atamlink.business_subscriptions (
-			bs_b_id, bs_mp_id, bs_status, bs_starts_at, 
+			bs_b_id, bs_mp_id, bs_status, bs_starts_at,
 			bs_expires_at, bs_created_at
 		) VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING bs_id`
@@ -670,8 +679,8 @@ func (r *businessRepository) IsSlugExists(slug string) (bool, error) {
 // CountUserBusinesses count business yang dimiliki user
 func (r *businessRepository) CountUserBusinesses(profileID int64) (int, error) {
 	query := `
-		SELECT COUNT(*) 
-		FROM atamlink.business_users 
+		SELECT COUNT(*)
+		FROM atamlink.business_users
 		WHERE bu_up_id = $1 AND bu_is_active = true`
 
 	var count int
@@ -681,4 +690,159 @@ func (r *businessRepository) CountUserBusinesses(profileID int64) (int, error) {
 	}
 
 	return count, nil
+}
+
+// GetUserCountByBusinessID mendapatkan jumlah user aktif di business
+func (r *businessRepository) GetUserCountByBusinessID(businessID int64) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM atamlink.business_users
+		WHERE bu_b_id = $1 AND bu_is_active = true`
+
+	var count int
+	err := r.db.QueryRow(query, businessID).Scan(&count)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count business users")
+	}
+
+	return count, nil
+}
+
+// GetUserRoleInBusiness mendapatkan role user di business tertentu
+func (r *businessRepository) GetUserRoleInBusiness(businessID, profileID int64) (string, error) {
+	query := `
+		SELECT bu_role
+		FROM atamlink.business_users
+		WHERE bu_b_id = $1 AND bu_up_id = $2 AND bu_is_active = true`
+
+	var role string
+	err := r.db.QueryRow(query, businessID, profileID).Scan(&role)
+	if err == sql.ErrNoRows {
+		return "", nil // User tidak memiliki role di business ini
+	}
+	if err != nil {
+		return "", errors.Wrap(err, "failed to get user role in business")
+	}
+
+	return role, nil
+}
+
+// GetBusinessesWithUserCount mendapatkan businesses dengan user count dan role
+func (r *businessRepository) GetBusinessesWithUserCount(filter ListFilter) ([]*BusinessWithUserCount, int64, error) {
+	// Build query dengan filter
+	qb := database.NewQueryBuilder()
+
+	// Select dengan user count dan role
+	selectFields := []string{
+		"b.b_id", "b.b_slug", "b.b_name", "b.b_logo_url", "b.b_type",
+		"b.b_is_active", "b.b_is_suspended", "b.b_suspension_reason",
+		"b.b_suspended_by", "b.b_suspended_at", "b.b_created_by",
+		"b.b_created_at", "b.b_updated_by", "b.b_updated_at",
+		"COALESCE(uc.user_count, 0) as user_count",
+	}
+
+	// Tambahkan role jika ada profileID
+	if filter.ProfileID > 0 {
+		selectFields = append(selectFields, "bu.bu_role as user_role")
+	}
+
+	qb.Select(selectFields...)
+	qb.From("atamlink.businesses b")
+
+	// Force only active businesses (konsisten dengan soft delete)
+	qb.Where("b.b_is_active = true")
+
+	// Join untuk user count
+	qb.LeftJoin(`(
+		SELECT bu_b_id, COUNT(*) as user_count
+		FROM atamlink.business_users
+		WHERE bu_is_active = true
+		GROUP BY bu_b_id
+	) uc`, "uc.bu_b_id = b.b_id")
+
+	// Join untuk role jika ada profileID
+	if filter.ProfileID > 0 {
+		qb.InnerJoin("atamlink.business_users bu", "bu.bu_b_id = b.b_id")
+		qb.Where("bu.bu_up_id = ? AND bu.bu_is_active = true", filter.ProfileID)
+	}
+
+	// Apply filters
+	if filter.Search != "" {
+		qb.Where("(LOWER(b.b_name) LIKE LOWER(?) OR LOWER(b.b_slug) LIKE LOWER(?))", "%"+filter.Search+"%", "%"+filter.Search+"%")
+	}
+
+	if filter.Type != "" {
+		qb.Where("b.b_type = ?", filter.Type)
+	}
+
+	// Note: IsActive filter dihapus karena sudah di-force ke true
+	// if filter.IsActive != nil {
+	//     qb.Where("b.b_is_active = ?", *filter.IsActive)
+	// }
+
+	if filter.IsSuspended != nil {
+		qb.Where("b.b_is_suspended = ?", *filter.IsSuspended)
+	}
+
+	// Count total
+	countQuery, countArgs := qb.BuildCount()
+	var total int64
+	err := r.db.QueryRow(countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "failed to count businesses")
+	}
+
+	// Get data
+	qb.OrderBy(filter.OrderBy)
+	qb.Limit(filter.Limit)
+	qb.Offset(filter.Offset)
+
+	query, args := qb.Build()
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "failed to query businesses")
+	}
+	defer rows.Close()
+
+	businesses := make([]*BusinessWithUserCount, 0)
+	for rows.Next() {
+		business := &BusinessWithUserCount{}
+		scanArgs := []interface{}{
+			&business.ID,
+			&business.Slug,
+			&business.Name,
+			&business.LogoURL,
+			&business.Type,
+			&business.IsActive,
+			&business.IsSuspended,
+			&business.SuspensionReason,
+			&business.SuspendedBy,
+			&business.SuspendedAt,
+			&business.CreatedBy,
+			&business.CreatedAt,
+			&business.UpdatedBy,
+			&business.UpdatedAt,
+			&business.UserCount,
+		}
+
+		// Tambahkan role jika ada profileID
+		if filter.ProfileID > 0 {
+			scanArgs = append(scanArgs, &business.UserRole)
+		}
+
+		err := rows.Scan(scanArgs...)
+		if err != nil {
+			return nil, 0, errors.Wrap(err, "failed to scan business row")
+		}
+		businesses = append(businesses, business)
+	}
+
+	return businesses, total, nil
+}
+
+// BusinessWithUserCount struct untuk business dengan user count dan role
+type BusinessWithUserCount struct {
+	entity.Business
+	UserCount int     `json:"user_count"`
+	UserRole  *string `json:"user_role,omitempty"`
 }

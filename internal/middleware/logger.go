@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,11 +42,15 @@ func Logger(log logger.Logger) gin.HandlerFunc {
 			path = path + "?" + raw
 		}
 
-		// Read request body untuk logging (hati-hati dengan large body)
+		// Read request body untuk logging (skip binary content)
 		var requestBody string
-		if c.Request.Body != nil && c.Request.ContentLength > 0 && c.Request.ContentLength < 1048576 { // < 1MB
+		if shouldLogRequestBody(c) {
 			bodyBytes, _ := io.ReadAll(c.Request.Body)
-			requestBody = string(bodyBytes)
+			if isSafeForLogging(bodyBytes) {
+				requestBody = string(bodyBytes)
+			} else {
+				requestBody = "[BINARY_DATA]"
+			}
 			// Restore body untuk handler
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
@@ -62,7 +67,7 @@ func Logger(log logger.Logger) gin.HandlerFunc {
 
 		// Get response body (hati-hati dengan large response)
 		responseBody := ""
-		if blw.body.Len() < 1048576 { // < 1MB
+		if blw.body.Len() < 1048576 && isSafeForLogging(blw.body.Bytes()) { // < 1MB dan safe
 			responseBody = blw.body.String()
 		}
 
@@ -105,6 +110,69 @@ func Logger(log logger.Logger) gin.HandlerFunc {
 			log.Info("Request processed", fields...)
 		}
 	}
+}
+
+// shouldLogRequestBody determines if request body should be logged
+func shouldLogRequestBody(c *gin.Context) bool {
+	// Skip jika tidak ada body
+	if c.Request.Body == nil || c.Request.ContentLength == 0 {
+		return false
+	}
+
+	// Skip jika body terlalu besar (> 512KB)
+	if c.Request.ContentLength > 524288 {
+		return false
+	}
+
+	// Skip untuk content types yang biasanya binary
+	contentType := c.GetHeader("Content-Type")
+	
+	// Skip multipart/form-data (file uploads)
+	if strings.Contains(contentType, "multipart/form-data") {
+		return false
+	}
+	
+	// Skip binary content types
+	binaryTypes := []string{
+		"image/",
+		"video/",
+		"audio/",
+		"application/octet-stream",
+		"application/pdf",
+		"application/zip",
+		"application/gzip",
+	}
+	
+	for _, binaryType := range binaryTypes {
+		if strings.Contains(contentType, binaryType) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isSafeForLogging checks if data is safe to log (no binary/null bytes)
+func isSafeForLogging(data []byte) bool {
+	// Check for null bytes (binary data indicator)
+	if bytes.Contains(data, []byte{0}) {
+		return false
+	}
+	
+	// Check for excessive non-printable characters
+	nonPrintable := 0
+	for _, b := range data {
+		if b < 32 && b != 9 && b != 10 && b != 13 { // Allow tab, LF, CR
+			nonPrintable++
+		}
+	}
+	
+	// If more than 10% non-printable, consider it binary
+	if len(data) > 0 && float64(nonPrintable)/float64(len(data)) > 0.1 {
+		return false
+	}
+	
+	return true
 }
 
 // generateRequestID generate unique request ID

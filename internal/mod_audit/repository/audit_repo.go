@@ -23,6 +23,20 @@ func NewAuditRepository(db *sql.DB) AuditRepository {
 	return &auditRepository{db: db}
 }
 
+// nullableJSON converts json.RawMessage to sql-safe value
+func nullableJSON(data json.RawMessage) interface{} {
+	if len(data) == 0 {
+		return nil
+	}
+	
+	// Validate JSON
+	if !json.Valid(data) {
+		return nil
+	}
+	
+	return data
+}
+
 // Create menyimpan audit log
 func (r *auditRepository) Create(log *entity.AuditLog) error {
 	contextJSON, err := json.Marshal(log.Context)
@@ -46,8 +60,8 @@ func (r *auditRepository) Create(log *entity.AuditLog) error {
 		log.Action,
 		log.Table,
 		log.RecordID,
-		log.OldData,
-		log.NewData,
+		nullableJSON(log.OldData),
+		nullableJSON(log.NewData),
 		contextJSON,
 		log.Reason,
 	).Scan(&log.ID)
@@ -95,8 +109,8 @@ func (r *auditRepository) BatchCreate(logs []*entity.AuditLog) error {
 			log.Action,
 			log.Table,
 			log.RecordID,
-			log.OldData,
-			log.NewData,
+			nullableJSON(log.OldData),
+			nullableJSON(log.NewData),
 			contextJSON,
 			log.Reason,
 		)

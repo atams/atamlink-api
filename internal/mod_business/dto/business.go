@@ -48,6 +48,7 @@ type BusinessListResponse struct {
 	IsActive    bool       `json:"is_active"`
 	IsSuspended bool       `json:"is_suspended"`
 	UserCount   int        `json:"user_count"`
+	UserRole    *string    `json:"user_role,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
@@ -130,7 +131,7 @@ type AcceptInviteRequest struct {
 type BusinessFilter struct {
 	Search      string     `json:"search,omitempty"`
 	Type        string     `json:"type,omitempty"`
-	IsActive    *bool      `json:"is_active,omitempty"`
+	// IsActive    *bool      `json:"is_active,omitempty"`
 	IsSuspended *bool      `json:"is_suspended,omitempty"`
 	UserID      string     `json:"user_id,omitempty"`
 	ProfileID   int64      `json:"profile_id,omitempty"`

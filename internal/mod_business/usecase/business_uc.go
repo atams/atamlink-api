@@ -1,3 +1,4 @@
+// business_usecase_update.go
 package usecase
 
 import (
@@ -60,6 +61,43 @@ func NewBusinessUseCase(
 		slugService:  slugService,
 		uploadService: uploadService,
 	}
+}
+
+// deepCopyBusiness creates a deep copy of business entity for audit purposes
+func (uc *businessUseCase) deepCopyBusiness(original *entity.Business) *entity.Business {
+	if original == nil {
+		return nil
+	}
+
+	copy := &entity.Business{
+		ID:               original.ID,
+		Slug:             original.Slug,
+		Name:             original.Name,
+		LogoURL:          original.LogoURL,
+		Type:             original.Type,
+		IsActive:         original.IsActive,
+		IsSuspended:      original.IsSuspended,
+		SuspensionReason: original.SuspensionReason,
+		SuspendedBy:      original.SuspendedBy,
+		SuspendedAt:      original.SuspendedAt,
+		CreatedBy:        original.CreatedBy,
+		CreatedAt:        original.CreatedAt,
+		UpdatedBy:        original.UpdatedBy,
+		UpdatedAt:        original.UpdatedAt,
+	}
+
+	// Deep copy time pointer if exists
+	if original.UpdatedAt != nil {
+		updatedAt := *original.UpdatedAt
+		copy.UpdatedAt = &updatedAt
+	}
+
+	if original.SuspendedAt != nil {
+		suspendedAt := *original.SuspendedAt
+		copy.SuspendedAt = &suspendedAt
+	}
+
+	return copy
 }
 
 // Create membuat business baru
@@ -178,8 +216,19 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
-	// Get complete business data
-	return uc.GetByID(business.ID, profileID)
+	// Get complete business data setelah commit berhasil
+	createdBusiness, err := uc.GetByID(business.ID, profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set new data untuk audit (data business setelah create)
+	// Untuk CREATE, old_data kosong, new_data berisi data yang dibuat
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditNewData, createdBusiness)
+	}
+
+	return createdBusiness, nil
 }
 
 // GetByID mendapatkan business by ID
@@ -228,7 +277,7 @@ func (uc *businessUseCase) GetBySlug(slug string) (*dto.BusinessResponse, error)
 	return uc.toBusinessResponse(business, nil, nil), nil
 }
 
-// List mendapatkan list businesses
+// List mendapatkan list businesses dengan user count dan role
 func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, page, perPage int, orderBy string) ([]*dto.BusinessListResponse, int64, error) {
 	// Build filter
 	repoFilter := repository.ListFilter{
@@ -240,7 +289,7 @@ func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, pag
 	if filter != nil {
 		repoFilter.Search = filter.Search
 		repoFilter.Type = filter.Type
-		repoFilter.IsActive = filter.IsActive
+		// repoFilter.IsActive = filter.IsActive // REMOVED: Force only active
 		repoFilter.IsSuspended = filter.IsSuspended
 		if filter.ProfileID > 0 {
 			repoFilter.ProfileID = filter.ProfileID
@@ -251,8 +300,8 @@ func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, pag
 		repoFilter.ProfileID = profileID
 	}
 
-	// Get businesses
-	businesses, total, err := uc.businessRepo.List(repoFilter)
+	// Get businesses dengan user count dan role
+	businesses, total, err := uc.businessRepo.GetBusinessesWithUserCount(repoFilter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -260,22 +309,35 @@ func (uc *businessUseCase) List(profileID int64, filter *dto.BusinessFilter, pag
 	// Convert to response
 	responses := make([]*dto.BusinessListResponse, len(businesses))
 	for i, business := range businesses {
-		responses[i] = &dto.BusinessListResponse{
+		response := &dto.BusinessListResponse{
 			ID:          business.ID,
 			Slug:        business.Slug,
 			Name:        business.Name,
 			Type:        business.Type,
 			IsActive:    business.IsActive,
 			IsSuspended: business.IsSuspended,
+			UserCount:   business.UserCount,
 			CreatedAt:   business.CreatedAt,
 			UpdatedAt:   business.UpdatedAt,
 		}
+
+		// Set logo URL jika ada
+		if business.LogoURL.Valid {
+			response.LogoURL = &business.LogoURL.String
+		}
+
+		// Set user role jika ada
+		if business.UserRole != nil {
+			response.UserRole = business.UserRole
+		}
+
+		responses[i] = response
 	}
 
 	return responses, total, nil
 }
 
-// GetByID mendapatkan business by ID
+// Update update business
 func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, req *dto.UpdateBusinessRequest) (*dto.BusinessResponse, error) {
 	// Get existing business
 	business, err := uc.businessRepo.GetByID(id)
@@ -283,9 +345,12 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		return nil, err
 	}
 
-	// Inject old_data ke audit context
+	// Create deep copy untuk old data audit SEBELUM modifikasi
+	oldBusinessData := uc.deepCopyBusiness(business)
+
+	// Set old data untuk audit dengan deep copy
 	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditOldData, business)
+		ctx.Set(middleware.GinKeyAuditOldData, oldBusinessData)
 	}
 
 	// Check permission
@@ -311,7 +376,7 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		oldLogoURL = business.LogoURL.String
 	}
 
-	// Update fields
+	// Update fields pada business object (setelah deep copy dibuat)
 	if req.Name != "" {
 		business.Name = req.Name
 	}
@@ -342,8 +407,7 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		Int64: profileID,
 		Valid: true,
 	}
-	business.UpdatedAt = &time.Time{}
-	*business.UpdatedAt = time.Now()
+	business.UpdatedAt = &[]time.Time{time.Now()}[0] // Ensure updated_at is set
 
 	// Execute update
 	if err := uc.businessRepo.Update(tx, business); err != nil {
@@ -375,8 +439,18 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		}()
 	}
 
-	// Get updated business
-	return uc.GetByID(id, profileID)
+	// Get updated business setelah commit berhasil
+	updatedBusiness, err := uc.GetByID(id, profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set new data untuk audit (data business setelah update)
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditNewData, updatedBusiness)
+	}
+
+	return updatedBusiness, nil
 }
 
 // Delete soft delete business
@@ -387,11 +461,14 @@ func (uc *businessUseCase) Delete(ctx *gin.Context, id int64, profileID int64) e
 		return err
 	}
 
-	// Inject old_data ke audit context
+	// Create deep copy untuk old data audit
+	oldBusinessData := uc.deepCopyBusiness(business)
+
+	// Set old data untuk audit
 	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditOldData, business)
+		ctx.Set(middleware.GinKeyAuditOldData, oldBusinessData)
 	}
-	
+
 	// Check permission
 	if err := uc.checkBusinessPermission(id, profileID, constant.PermBusinessDelete); err != nil {
 		return err
@@ -410,6 +487,11 @@ func (uc *businessUseCase) Delete(ctx *gin.Context, id int64, profileID int64) e
 
 	if err := tx.Commit(); err != nil {
 		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	// Untuk DELETE, new_data adalah null (tidak ada data baru)
+	if ctx != nil {
+		ctx.Set(middleware.GinKeyAuditNewData, nil)
 	}
 
 	return nil
@@ -721,7 +803,7 @@ func (uc *businessUseCase) toBusinessResponse(business *entity.Business, users [
 		CreatedAt:        business.CreatedAt,
 		UpdatedAt:        business.UpdatedAt,
 	}
-	
+
 	// Add LogoURL if valid
 	if business.LogoURL.Valid {
 		resp.LogoURL = &business.LogoURL.String

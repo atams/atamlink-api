@@ -108,7 +108,7 @@ func (h *BusinessHandler) Create(c *gin.Context) {
 
 // List handler untuk list businesses
 // @Summary List businesses
-// @Description Get list of businesses
+// @Description Get list of active businesses only
 // @Tags businesses
 // @Accept json
 // @Produce json
@@ -116,7 +116,6 @@ func (h *BusinessHandler) Create(c *gin.Context) {
 // @Param per_page query int false "Items per page" default(20)
 // @Param search query string false "Search keyword"
 // @Param type query string false "Business type filter"
-// @Param is_active query bool false "Active status filter"
 // @Param sort query string false "Sort field" default(created_at)
 // @Param order query string false "Sort order" default(desc)
 // @Success 200 {object} utils.PaginatedResponse{data=[]dto.BusinessListResponse}
@@ -140,15 +139,7 @@ func (h *BusinessHandler) List(c *gin.Context) {
 		Type:   filterParams.Type,
 	}
 
-	// Parse is_active filter
-	if isActiveStr := c.Query("is_active"); isActiveStr != "" {
-		isActive, err := strconv.ParseBool(isActiveStr)
-		if err == nil {
-			filter.IsActive = &isActive
-		}
-	}
-
-	// Parse is_suspended filter
+	// Parse is_suspended filter (tetap pertahankan untuk admin)
 	if isSuspendedStr := c.Query("is_suspended"); isSuspendedStr != "" {
 		isSuspended, err := strconv.ParseBool(isSuspendedStr)
 		if err == nil {

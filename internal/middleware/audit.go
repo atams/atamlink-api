@@ -3,7 +3,6 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +12,10 @@ import (
 	"github.com/atam/atamlink/internal/service"
 )
 
-const GinKeyAuditOldData = "audit_old_data"
+const (
+	GinKeyAuditOldData = "audit_old_data"
+	GinKeyAuditNewData = "audit_new_data"
+)
 
 // AuditConfig konfigurasi untuk audit middleware
 type AuditConfig struct {
@@ -56,6 +58,25 @@ func (w *auditResponseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// safeJSONMarshal marshals data to JSON, returns nil if error or data is nil
+func safeJSONMarshal(data interface{}) json.RawMessage {
+	if data == nil {
+		return nil
+	}
+	
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil
+	}
+	
+	// Validate JSON
+	if !json.Valid(jsonData) {
+		return nil
+	}
+	
+	return jsonData
+}
+
 // Audit middleware untuk audit logging
 func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFunc {
 	if config == nil {
@@ -79,28 +100,6 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 		// Start timer
 		start := time.Now()
 
-		// Capture request body
-		var requestBody interface{}
-		if config.RecordRequestBody && c.Request.Body != nil {
-			bodyBytes, _ := io.ReadAll(c.Request.Body)
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			
-			// if len(bodyBytes) > 0 && int64(len(bodyBytes)) <= config.MaxBodySize {
-			// 	var body interface{}
-			// 	if err := json.Unmarshal(bodyBytes, &body); err == nil {
-			// 		requestBody = body
-			// 	} else {
-			// 		requestBody = string(bodyBytes)
-			// 	}
-			// }
-			if len(bodyBytes) > 0 && int64(len(bodyBytes)) <= config.MaxBodySize {
-				// Attempt to unmarshal into RawMessage, if it fails, marshal as a string
-				if err := json.Unmarshal(bodyBytes, &requestBody); err != nil {
-					requestBody, _ = json.Marshal(string(bodyBytes))
-				}
-			}
-		}
-
 		// Wrap response writer
 		blw := &auditResponseWriter{
 			ResponseWriter: c.Writer,
@@ -115,17 +114,21 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 		go func() {
 			// Determine action based on method and path
 			action := determineAction(c)
-			
+
 			// Extract business ID if available
 			var businessID *int64
+			var recordID string
+			
+			// Try to get ID from URL parameter first
 			if bidStr := c.Param("id"); bidStr != "" {
 				if bid, err := strconv.ParseInt(bidStr, 10, 64); err == nil {
 					businessID = &bid
+					recordID = bidStr
 				}
 			}
 
-			// Extract table name and record ID from path
-			table, recordID := extractTableAndRecord(c)
+			// Extract table name from path
+			table := extractTableName(c)
 
 			// Build context
 			ctx := map[string]interface{}{
@@ -139,76 +142,83 @@ func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFu
 				"request_id":   c.GetString("requestID"),
 			}
 
-			// // Add response body if configured
-			// var responseBody interface{}
-			// if config.RecordResponseBody && blw.body.Len() > 0 && 
-			//    int64(blw.body.Len()) <= config.MaxBodySize &&
-			//    c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
-			// 	var body interface{}
-			// 	if err := json.Unmarshal(blw.body.Bytes(), &body); err == nil {
-			// 		responseBody = body
-			// 	}
-			// }
-			var responseBody json.RawMessage 
-			if config.RecordResponseBody && blw.body.Len() > 0 && 
-			   int64(blw.body.Len()) <= config.MaxBodySize &&
-			   c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
-				// Attempt to unmarshal into RawMessage, if it fails, marshal as a string
-				if err := json.Unmarshal(blw.body.Bytes(), &responseBody); err != nil {
-					// responseBody, _ = json.Marshal(blw.body.String())
-					responseBody = json.RawMessage(strconv.Quote(blw.body.String()))
+			// Initialize old data dan new data
+			var oldDataJSON, newDataJSON json.RawMessage
+
+			// Old data (untuk UPDATE/DELETE operations)
+			if oldData, exists := c.Get(GinKeyAuditOldData); exists {
+				oldDataJSON = safeJSONMarshal(oldData)
+			}
+
+			// New data (untuk CREATE/UPDATE operations)
+			if newData, exists := c.Get(GinKeyAuditNewData); exists {
+				newDataJSON = safeJSONMarshal(newData)
+			} else if c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
+				// Jika tidak ada data baru dari context, ambil dari response body
+				// Tapi hanya ambil bagian "data" saja, bukan keseluruhan response
+				if blw.body.Len() > 0 {
+					var responseData map[string]interface{}
+					if err := json.Unmarshal(blw.body.Bytes(), &responseData); err == nil {
+						// Ambil hanya bagian "data" dari response
+						if data, exists := responseData["data"]; exists {
+							newDataJSON = safeJSONMarshal(data)
+						}
+					}
 				}
 			}
 
-			// Create audit entry
-			entry := &service.AuditEntry{
-				UserProfileID: profileIDPtr,
-				BusinessID:    businessID,
-				Action:        action,
-				Table:         table,
-				RecordID:      recordID,
-				OldData:       nil, // Will be set for UPDATE operations
-				// NewData:       requestBody,
-				NewData:       responseBody,
-				Context:       ctx,
-			}
-
-			// For successful responses, record response as new data
-			if c.Writer.Status() >= 200 && c.Writer.Status() < 300 && responseBody != nil {
-				if action == "CREATE" || action == "UPDATE" {
-					entry.NewData = responseBody
+			// Extract business ID dan record ID dari response data jika belum ada
+			if businessID == nil || recordID == "" {
+				extractedBusinessID, extractedRecordID := extractIDsFromData(newDataJSON, oldDataJSON, table)
+				if businessID == nil {
+					businessID = extractedBusinessID
 				}
-			}
-			
-			if oldVal, exists := c.Get(GinKeyAuditOldData); exists {
-				if oldJSON, err := json.Marshal(oldVal); err == nil {
-					entry.OldData = oldJSON
+				if recordID == "" {
+					recordID = extractedRecordID
 				}
 			}
 
-			// Log to audit service
-			auditService.Log(entry)
+			// Only proceed if we have meaningful data or it's a valid operation
+			if shouldLogAudit(action, oldDataJSON, newDataJSON, c.Writer.Status()) {
+				// Create audit entry
+				entry := &service.AuditEntry{
+					UserProfileID: profileIDPtr,
+					BusinessID:    businessID,
+					Action:        action,
+					Table:         table,
+					RecordID:      recordID,
+					OldData:       oldDataJSON,
+					NewData:       newDataJSON,
+					Context:       ctx,
+				}
+
+				// Log audit entry
+				auditService.Log(entry)
+			}
 		}()
 	}
 }
 
-// shouldSkipAudit check apakah request harus di-skip dari audit
-func shouldSkipAudit(c *gin.Context, config *AuditConfig) bool {
-	// Skip by path
-	for _, path := range config.SkipPaths {
-		if strings.HasPrefix(c.Request.URL.Path, path) {
-			return true
-		}
+// shouldLogAudit determines if an audit entry should be logged
+func shouldLogAudit(action string, oldData, newData json.RawMessage, status int) bool {
+	// Don't log if status is not successful
+	if status < 200 || status >= 300 {
+		return false
 	}
 
-	// Skip by method
-	for _, method := range config.SkipMethods {
-		if c.Request.Method == method {
-			return true
-		}
+	// Always log these actions
+	switch action {
+	case "DELETE":
+		return oldData != nil
+	case "CREATE":
+		return newData != nil
+	case "UPDATE":
+		return oldData != nil && newData != nil
+	case "INVITE_SENT":
+		return newData != nil
+	default:
+		return oldData != nil || newData != nil
 	}
-
-	return false
 }
 
 // determineAction menentukan action berdasarkan method dan path
@@ -218,9 +228,7 @@ func determineAction(c *gin.Context) string {
 
 	switch method {
 	case "POST":
-		if strings.Contains(path, "/invites/accept") {
-			return "INVITE_USED"
-		} else if strings.Contains(path, "/invites") {
+		if strings.Contains(path, "/invite") {
 			return "INVITE_SENT"
 		}
 		return "CREATE"
@@ -233,38 +241,109 @@ func determineAction(c *gin.Context) string {
 	}
 }
 
-// extractTableAndRecord extract table name dan record ID dari path
-func extractTableAndRecord(c *gin.Context) (string, string) {
-	path := c.Request.URL.Path
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+// extractIDsFromData extracts business ID and record ID from JSON data
+func extractIDsFromData(newData, oldData json.RawMessage, table string) (*int64, string) {
+	// Try to extract from new data first
+	if newData != nil {
+		if businessID, recordID := parseIDsFromJSON(newData, table); businessID != nil {
+			return businessID, recordID
+		}
+	}
 	
-	if len(parts) < 3 {
-		return "", ""
+	// Fall back to old data
+	if oldData != nil {
+		if businessID, recordID := parseIDsFromJSON(oldData, table); businessID != nil {
+			return businessID, recordID
+		}
 	}
-
-	// Skip prefix (api/v1)
-	if parts[0] == "api" {
-		parts = parts[2:]
-	}
-
-	if len(parts) == 0 {
-		return "", ""
-	}
-
-	// Get table name from first part
-	table := parts[0]
 	
-	// Get record ID if exists
-	recordID := ""
-	if len(parts) > 1 && isNumeric(parts[1]) {
-		recordID = parts[1]
-	}
-
-	return table, recordID
+	return nil, ""
 }
 
-// isNumeric check apakah string adalah numeric
-func isNumeric(s string) bool {
-	_, err := strconv.ParseInt(s, 10, 64)
-	return err == nil
+// parseIDsFromJSON parses JSON and extracts relevant IDs
+func parseIDsFromJSON(data json.RawMessage, table string) (*int64, string) {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, ""
+	}
+	
+	// Extract record ID (always "id" field)
+	var recordID string
+	if id, exists := parsed["id"]; exists {
+		switch v := id.(type) {
+		case float64:
+			recordID = strconv.FormatInt(int64(v), 10)
+		case int64:
+			recordID = strconv.FormatInt(v, 10)
+		case string:
+			recordID = v
+		}
+	}
+	
+	// Extract business ID based on table
+	var businessID *int64
+	switch table {
+	case "businesses":
+		// For businesses table, business ID = record ID
+		if recordID != "" {
+			if bid, err := strconv.ParseInt(recordID, 10, 64); err == nil {
+				businessID = &bid
+			}
+		}
+	case "business_users", "business_invites", "business_subscriptions":
+		// For business-related tables, look for business_id field
+		if bid, exists := parsed["business_id"]; exists {
+			switch v := bid.(type) {
+			case float64:
+				id := int64(v)
+				businessID = &id
+			case int64:
+				businessID = &v
+			}
+		}
+	case "catalogs", "products":
+		// For catalog/product tables, might need to look up business_id
+		// For now, return nil since we need business context
+		businessID = nil
+	}
+	
+	return businessID, recordID
+}
+
+// extractTableName mengekstrak nama tabel dari path
+func extractTableName(c *gin.Context) string {
+	path := c.Request.URL.Path
+
+	// Map path ke table name
+	switch {
+	case strings.Contains(path, "/businesses"):
+		return "businesses"
+	case strings.Contains(path, "/catalogs"):
+		return "catalogs"
+	case strings.Contains(path, "/profile"):
+		return "user_profiles"
+	case strings.Contains(path, "/users"):
+		return "users"
+	default:
+		return ""
+	}
+}
+
+// shouldSkipAudit menentukan apakah audit harus di-skip
+func shouldSkipAudit(c *gin.Context, config *AuditConfig) bool {
+	// Skip berdasarkan path
+	for _, path := range config.SkipPaths {
+		if strings.HasPrefix(c.Request.URL.Path, path) {
+			return true
+		}
+	}
+
+	// Skip berdasarkan method
+	for _, method := range config.SkipMethods {
+		if c.Request.Method == method {
+			return true
+		}
+	}
+
+	return false
 }
