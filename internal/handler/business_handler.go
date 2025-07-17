@@ -10,7 +10,7 @@ import (
 	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/usecase"
-	"github.com/atam/atamlink/internal/service"
+	"github.com/atam/atamlink/internal/service" 
 	"github.com/atam/atamlink/pkg/errors"
 	"github.com/atam/atamlink/pkg/utils"
 )
@@ -18,7 +18,7 @@ import (
 // BusinessHandler handler untuk business endpoints
 type BusinessHandler struct {
 	businessUC usecase.BusinessUseCase
-	uploadService service.UploadService
+	uploadService service.UploadService // Keep uploadService here
 	validator  *utils.Validator
 }
 
@@ -75,20 +75,34 @@ func (h *BusinessHandler) Create(c *gin.Context) {
 	
 	// Handle file upload jika ada
 	file, err := c.FormFile("logo")
-	if err == nil && file != nil {
-		req.LogoFile = file
-	}
+	var logoURL *string = nil
 
-	// Validasi field required
-	if req.Name == "" {
-		utils.BadRequest(c, "Field 'name' wajib diisi")
-		return
+	if err == nil && file != nil {
+		// Validate file first
+		if err := h.uploadService.ValidateFile(file); err != nil {
+			h.handleError(c, err)
+			return
+		}
+
+		// Upload file to Cloudinary
+		uploadedURL, uploadErr := h.uploadService.UploadImageToCloudinary(file, "thumbnail")
+		if uploadErr != nil {
+			h.handleError(c, uploadErr)
+			return
+		}
+		logoURL = &uploadedURL // Set the URL from upload
 	}
-	
-	if req.Type == "" {
-		utils.BadRequest(c, "Field 'type' wajib diisi")
-		return
-	}
+	req.LogoURL = logoURL // Set the LogoURL in the request DTO
+
+	// Validasi field required (validator akan mengurus sisa validasi req.Name dan req.Type)
+	// if req.Name == "" {
+	// 	utils.BadRequest(c, "Field 'name' wajib diisi")
+	// 	return
+	// }
+	// if req.Type == "" {
+	// 	utils.BadRequest(c, "Field 'type' wajib diisi")
+	// 	return
+	// }
 
 	// Validate request menggunakan validator
 	if errors := h.validator.Validate(req); len(errors) > 0 {
@@ -245,6 +259,7 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 	// Deteksi content type
 	contentType := c.GetHeader("Content-Type")
 	var req dto.UpdateBusinessRequest
+	var logoURL *string = nil // Initialize logoURL
 
 	// Handle berdasarkan content type
 	if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -271,7 +286,19 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 		// Handle file upload jika ada
 		file, err := c.FormFile("logo")
 		if err == nil && file != nil {
-			req.LogoFile = file
+			// Validate file first
+			if err := h.uploadService.ValidateFile(file); err != nil {
+				h.handleError(c, err)
+				return
+			}
+
+			// Upload file to Cloudinary
+			uploadedURL, uploadErr := h.uploadService.UploadImageToCloudinary(file, "thumbnail")
+			if uploadErr != nil {
+				h.handleError(c, uploadErr)
+				return
+			}
+			logoURL = &uploadedURL // Set the URL from upload
 		}
 	} else {
 		// Handle JSON request
@@ -279,14 +306,17 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 			utils.BadRequest(c, constant.ErrMsgBadRequest)
 			return
 		}
+		// If JSON, req.LogoURL will be directly parsed from JSON body if present
+		// No file upload logic here
 	}
 
+	req.LogoURL = logoURL // Set the LogoURL in the request DTO (from multipart or potentially null)
+
 	// Validate request jika ada field yang diisi
-	if req.Name != "" || req.Type != "" || req.LogoFile != nil {
-		if errors := h.validator.Validate(req); len(errors) > 0 {
-			utils.ValidationError(c, errors)
-			return
-		}
+	// Validator akan memvalidasi semua field di struct req, termasuk LogoURL
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
 	}
 
 	// Update business
@@ -613,6 +643,10 @@ func (h *BusinessHandler) handleError(c *gin.Context, err error) {
 		utils.Forbidden(c, constant.ErrMsgForbidden)
 	case errors.Is(err, errors.ErrValidation):
 		utils.BadRequest(c, err.Error())
+	case errors.Is(err, errors.ErrFileTooLarge): // Added file upload specific errors
+		utils.Error(c, 413, constant.ErrMsgFileTooLarge)
+	case errors.Is(err, errors.ErrInvalidFileType):
+		utils.BadRequest(c, constant.ErrMsgFileTypeInvalid)
 	default:
 		utils.InternalServerError(c, constant.ErrMsgInternalServer)
 	}

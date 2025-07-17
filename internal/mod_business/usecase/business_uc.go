@@ -43,7 +43,7 @@ type businessUseCase struct {
 	businessRepo repository.BusinessRepository
 	userRepo     userRepo.UserRepository
 	slugService  service.SlugService
-	uploadService service.UploadService
+	uploadService service.UploadService // Keep for deletion/rollback scenarios
 }
 
 // NewBusinessUseCase membuat instance business use case baru
@@ -156,17 +156,10 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 		CreatedAt: time.Now(),
 	}
 
-	// Handle logo upload jika ada
-	var uploadedLogoURL string
-	if req.LogoFile != nil {
-		// Upload logo ke Cloudinary sebagai thumbnail
-		logoURL, err := uc.uploadService.UploadImageToCloudinary(req.LogoFile, "thumbnail")
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to upload logo")
-		}
-		uploadedLogoURL = logoURL
+	// Handle logo URL from DTO (already uploaded by handler)
+	if req.LogoURL != nil {
 		business.LogoURL = sql.NullString{
-			String: logoURL,
+			String: *req.LogoURL,
 			Valid:  true,
 		}
 	}
@@ -174,12 +167,10 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 	// Create business
 	if err := uc.businessRepo.Create(tx, business); err != nil {
 		// Jika create gagal dan logo sudah diupload, hapus dari Cloudinary
-		if uploadedLogoURL != "" {
-			// Extract public ID dari URL untuk delete
-			// Note: Dalam implementasi real, kita perlu extract public ID dari URL
+		if req.LogoURL != nil && *req.LogoURL != "" {
 			go func() {
 				// Best effort delete, tidak perlu handle error
-				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+				_ = uc.uploadService.DeleteFromCloudinary(*req.LogoURL)
 			}()
 		}
 		return nil, err
@@ -197,9 +188,9 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 
 	if err := uc.businessRepo.AddUser(tx, businessUser); err != nil {
 		// Rollback upload jika add user gagal
-		if uploadedLogoURL != "" {
+		if req.LogoURL != nil && *req.LogoURL != "" {
 			go func() {
-				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+				_ = uc.uploadService.DeleteFromCloudinary(*req.LogoURL)
 			}()
 		}
 		return nil, err
@@ -208,9 +199,9 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		// Rollback upload jika commit gagal
-		if uploadedLogoURL != "" {
+		if req.LogoURL != nil && *req.LogoURL != "" {
 			go func() {
-				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+				_ = uc.uploadService.DeleteFromCloudinary(*req.LogoURL)
 			}()
 		}
 		return nil, errors.Wrap(err, "failed to commit transaction")
@@ -387,20 +378,18 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		business.IsActive = *req.IsActive
 	}
 
-	// Handle logo upload jika ada
-	var uploadedLogoURL string
-	if req.LogoFile != nil {
-		// Upload logo baru ke Cloudinary
-		logoURL, err := uc.uploadService.UploadImageToCloudinary(req.LogoFile, "thumbnail")
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to upload logo")
-		}
-		uploadedLogoURL = logoURL
-		business.LogoURL = sql.NullString{
-			String: logoURL,
-			Valid:  true,
+	// Handle logo URL from DTO (already uploaded by handler)
+	if req.LogoURL != nil { // If a new logo URL is provided (or explicit nil for removal)
+		if *req.LogoURL == "" { // If empty string is passed, it means remove existing logo
+			business.LogoURL = sql.NullString{Valid: false}
+		} else {
+			business.LogoURL = sql.NullString{
+				String: *req.LogoURL,
+				Valid:  true,
+			}
 		}
 	}
+
 
 	// Update metadata
 	business.UpdatedBy = sql.NullInt64{
@@ -411,10 +400,10 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 
 	// Execute update
 	if err := uc.businessRepo.Update(tx, business); err != nil {
-		// Rollback upload jika update gagal
-		if uploadedLogoURL != "" {
+		// Rollback new upload if update fails
+		if req.LogoURL != nil && *req.LogoURL != "" {
 			go func() {
-				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+				_ = uc.uploadService.DeleteFromCloudinary(*req.LogoURL)
 			}()
 		}
 		return nil, err
@@ -422,17 +411,18 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		// Rollback upload jika commit gagal
-		if uploadedLogoURL != "" {
+		// Rollback new upload if commit fails
+		if req.LogoURL != nil && *req.LogoURL != "" {
 			go func() {
-				_ = uc.uploadService.DeleteFromCloudinary(uploadedLogoURL)
+				_ = uc.uploadService.DeleteFromCloudinary(*req.LogoURL)
 			}()
 		}
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
 	// Jika ada logo lama dan berhasil upload logo baru, hapus logo lama
-	if oldLogoURL != "" && uploadedLogoURL != "" {
+	// Atau jika logo lama dihapus (req.LogoURL is non-nil and empty)
+	if oldLogoURL != "" && (req.LogoURL != nil && *req.LogoURL == "" || (req.LogoURL != nil && *req.LogoURL != oldLogoURL)) {
 		go func() {
 			// Best effort delete old logo
 			_ = uc.uploadService.DeleteFromCloudinary(oldLogoURL)
@@ -654,7 +644,11 @@ func (uc *businessUseCase) RemoveUser(businessID int64, profileID int64, targetP
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	return nil
 }
 
 // CreateInvite membuat invite link

@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"mime/multipart"
+	// Remove "mime/multipart" import as it's no longer part of DTO
 	"time"
 )
 
@@ -10,7 +10,7 @@ type CreateBusinessRequest struct {
 	Name string `json:"name" validate:"required,min=3,max=200"`
 	Slug string `json:"slug,omitempty" validate:"omitempty,slug,min=3,max=100"`
 	Type string `json:"type" validate:"required,oneof=retail service manufacturing technology hospitality healthcare education other"`
-	LogoFile *multipart.FileHeader `form:"logo"`
+	LogoURL *string `json:"logo_url,omitempty"` // Change from LogoFile to LogoURL
 }
 
 // UpdateBusinessRequest request untuk update business
@@ -18,7 +18,7 @@ type UpdateBusinessRequest struct {
 	Name     string `json:"name,omitempty" validate:"omitempty,min=3,max=200"`
 	Type     string `json:"type,omitempty" validate:"omitempty,oneof=retail service manufacturing technology hospitality healthcare education other"`
 	IsActive *bool  `json:"is_active,omitempty"`
-	LogoFile *multipart.FileHeader `form:"logo"`
+	LogoURL *string `json:"logo_url,omitempty"` // Change from LogoFile to LogoURL
 }
 
 // BusinessResponse response untuk business
