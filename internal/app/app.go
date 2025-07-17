@@ -21,8 +21,8 @@ import (
 	"github.com/atam/atamlink/internal/mod_business/usecase"
 	// catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
 	// catalogUC "github.com/atam/atamlink/internal/mod_catalog/usecase"
-	// masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
-	// masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
+	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
+	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
 	// userUC "github.com/atam/atamlink/internal/mod_user/usecase"
 	"github.com/atam/atamlink/internal/service"
@@ -70,7 +70,7 @@ func New() (*App, error) {
 	userRepository := userRepo.NewUserRepository(db)
 	businessRepository := businessRepo.NewBusinessRepository(db)
 	// catalogRepository := catalogRepo.NewCatalogRepository(db)
-	// masterRepository := masterRepo.NewMasterRepository(db)
+	masterRepository := masterRepo.NewMasterRepository(db)
 	auditRepository := auditRepo.NewAuditRepository(db)
 
 	// Start audit service
@@ -80,14 +80,14 @@ func New() (*App, error) {
 	// Use Cases
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService, uploadService)
 	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
-	// masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
+	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
 	// userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, uploadService, validator)
 	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
-	// masterHandler := handler.NewMasterHandler(masterUseCase, validator)
+	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
 	// userHandler := handler.NewUserHandler(userUseCase, validator)
 
 	// Inisialisasi router Gin
@@ -106,7 +106,7 @@ func New() (*App, error) {
 
 	// Daftarkan semua rute
 	// setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
-	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, nil, nil)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, masterHandler, nil)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -232,23 +232,23 @@ func setupRoutes(
 		// 	// TODO: Tambahkan rute untuk section dan card management
 		// }
 
-		// // Rute untuk modul Master Data
-		// masters := api.Group("/masters")
-		// {
-		// 	// Plans CRUD
-		// 	masters.POST("/plans", masterHandler.CreatePlan)
-		// 	masters.GET("/plans", masterHandler.ListPlans)
-		// 	masters.GET("/plans/:id", masterHandler.GetPlanByID)
-		// 	masters.PUT("/plans/:id", masterHandler.UpdatePlan)
-		// 	masters.DELETE("/plans/:id", masterHandler.DeletePlan)
+		// Rute untuk modul Master Data
+		masters := api.Group("/masters")
+		{
+			// Plans CRUD
+			masters.POST("/plans", masterHandler.CreatePlan)
+			masters.GET("/plans", masterHandler.ListPlans)
+			masters.GET("/plans/:id", masterHandler.GetPlanByID)
+			masters.PUT("/plans/:id", masterHandler.UpdatePlan)
+			masters.DELETE("/plans/:id", masterHandler.DeletePlan)
 
-		// 	// Themes CRUD
-		// 	masters.POST("/themes", masterHandler.CreateTheme)
-		// 	masters.GET("/themes", masterHandler.ListThemes)
-		// 	masters.GET("/themes/:id", masterHandler.GetThemeByID)
-		// 	masters.PUT("/themes/:id", masterHandler.UpdateTheme)
-		// 	masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
-		// }
+			// Themes CRUD
+			masters.POST("/themes", masterHandler.CreateTheme)
+			masters.GET("/themes", masterHandler.ListThemes)
+			masters.GET("/themes/:id", masterHandler.GetThemeByID)
+			masters.PUT("/themes/:id", masterHandler.UpdateTheme)
+			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
+		}
 
 		// profile := api.Group("/profile")
 		// {
