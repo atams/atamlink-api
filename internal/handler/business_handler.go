@@ -18,7 +18,7 @@ import (
 // BusinessHandler handler untuk business endpoints
 type BusinessHandler struct {
 	businessUC usecase.BusinessUseCase
-	uploadService service.UploadService // Keep uploadService here
+	uploadService service.UploadService 
 	validator  *utils.Validator
 }
 
@@ -93,16 +93,6 @@ func (h *BusinessHandler) Create(c *gin.Context) {
 		logoURL = &uploadedURL // Set the URL from upload
 	}
 	req.LogoURL = logoURL // Set the LogoURL in the request DTO
-
-	// Validasi field required (validator akan mengurus sisa validasi req.Name dan req.Type)
-	// if req.Name == "" {
-	// 	utils.BadRequest(c, "Field 'name' wajib diisi")
-	// 	return
-	// }
-	// if req.Type == "" {
-	// 	utils.BadRequest(c, "Field 'type' wajib diisi")
-	// 	return
-	// }
 
 	// Validate request menggunakan validator
 	if errors := h.validator.Validate(req); len(errors) > 0 {
@@ -259,7 +249,7 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 	// Deteksi content type
 	contentType := c.GetHeader("Content-Type")
 	var req dto.UpdateBusinessRequest
-	var logoURL *string = nil // Initialize logoURL
+	var logoURL *string = nil 
 
 	// Handle berdasarkan content type
 	if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -313,7 +303,6 @@ func (h *BusinessHandler) Update(c *gin.Context) {
 	req.LogoURL = logoURL // Set the LogoURL in the request DTO (from multipart or potentially null)
 
 	// Validate request jika ada field yang diisi
-	// Validator akan memvalidasi semua field di struct req, termasuk LogoURL
 	if errors := h.validator.Validate(req); len(errors) > 0 {
 		utils.ValidationError(c, errors)
 		return
@@ -625,6 +614,49 @@ func (h *BusinessHandler) AcceptInvite(c *gin.Context) {
 	utils.OK(c, "Berhasil bergabung ke bisnis", nil)
 }
 
+// NEW: ActivateSubscription handler untuk mengaktifkan langganan bisnis (bypass pembayaran)
+// @Summary Activate business subscription (Bypass Payment)
+// @Description Activates a business subscription immediately for testing/development without payment.
+// @Tags businesses
+// @Accept json
+// @Produce json
+// @Param body body dto.ActivateSubscriptionRequest true "Activation data"
+// @Success 201 {object} utils.Response{data=dto.SubscriptionResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /businesses/subscriptions/activate [post]
+func (h *BusinessHandler) ActivateSubscription(c *gin.Context) {
+	profileID, exists := middleware.GetProfileID(c)
+	if !exists {
+		utils.Unauthorized(c, constant.ErrMsgUnauthorized)
+		return
+	}
+
+	var req dto.ActivateSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, constant.ErrMsgBadRequest)
+		return
+	}
+
+	if errors := h.validator.Validate(req); len(errors) > 0 {
+		utils.ValidationError(c, errors)
+		return
+	}
+
+	subscription, err := h.businessUC.ActivateSubscription(profileID, &req)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	utils.Created(c, "Langganan berhasil diaktifkan", subscription)
+}
+
+
 // handleError menangani error dari use case
 func (h *BusinessHandler) handleError(c *gin.Context, err error) {
 	// Check if AppError
@@ -643,10 +675,16 @@ func (h *BusinessHandler) handleError(c *gin.Context, err error) {
 		utils.Forbidden(c, constant.ErrMsgForbidden)
 	case errors.Is(err, errors.ErrValidation):
 		utils.BadRequest(c, err.Error())
-	case errors.Is(err, errors.ErrFileTooLarge): // Added file upload specific errors
+	case errors.Is(err, errors.ErrFileTooLarge): 
 		utils.Error(c, 413, constant.ErrMsgFileTooLarge)
 	case errors.Is(err, errors.ErrInvalidFileType):
 		utils.BadRequest(c, constant.ErrMsgFileTypeInvalid)
+	case errors.Is(err, errors.ErrPlanNotFound): // Handle plan not found
+		utils.NotFound(c, constant.ErrMsgPlanNotFound)
+	case errors.Is(err, errors.ErrInvalidPlan): // Handle invalid plan
+		utils.BadRequest(c, constant.ErrMsgInvalidPlan)
+	case errors.Is(err, errors.ErrConflict): // Handle conflicts like existing active sub
+		utils.Conflict(c, err.Error())
 	default:
 		utils.InternalServerError(c, constant.ErrMsgInternalServer)
 	}

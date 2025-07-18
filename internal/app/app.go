@@ -78,7 +78,7 @@ func New() (*App, error) {
 	auditService.Start()
 
 	// Use Cases
-	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, slugService, uploadService)
+	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, masterRepository, slugService, uploadService)
 	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
 	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
 	// userUseCase := userUC.NewUserUseCase(db, userRepository)
@@ -104,7 +104,6 @@ func New() (*App, error) {
 	// Setup Swagger untuk development
 	setupSwagger(router, cfg)
 
-	// Daftarkan semua rute
 	// setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
 	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, masterHandler, nil)
 
@@ -218,7 +217,16 @@ func setupRoutes(
 			businesses.GET("/:id", businessHandler.GetByID)
 			businesses.PUT("/:id", businessHandler.Update)
 			businesses.DELETE("/:id", businessHandler.Delete)
-			// TODO: Tambahkan rute untuk user management di dalam business
+			// User management dalam business
+			businesses.POST("/:id/users", businessHandler.AddUser)
+			businesses.PUT("/:id/users/:user_id", businessHandler.UpdateUserRole)
+			businesses.DELETE("/:id/users/:user_id", businessHandler.RemoveUser)
+			// Invite management
+			businesses.POST("/:id/invites", businessHandler.CreateInvite)
+			businesses.POST("/invites/accept", businessHandler.AcceptInvite)
+
+			// NEW: Subscription management route
+			businesses.POST("/subscriptions/activate", businessHandler.ActivateSubscription)
 		}
 
 		// Rute untuk modul Catalog

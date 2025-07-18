@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
+	"github.com/atam/atamlink/internal/constant"
 )
 
 // Validator wrapper untuk go-playground/validator
@@ -145,6 +146,12 @@ func registerCustomValidators(v *validator.Validate) {
 	// No spaces validator
 	v.RegisterValidation("nospaces", func(fl validator.FieldLevel) bool {
 		return !strings.Contains(fl.Field().String(), " ")
+	})
+
+	// Business_role validator 🐞
+	v.RegisterValidation("business_role", func(fl validator.FieldLevel) bool {
+		role := fl.Field().String()
+		return constant.IsValidRole(role) // Use the existing helper function
 	})
 }
 

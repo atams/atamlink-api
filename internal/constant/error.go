@@ -57,6 +57,7 @@ const (
 	ErrMsgSubscriptionExpired = "Subscription Anda sudah habis"
 	ErrMsgSubscriptionRequired = "Fitur ini memerlukan subscription"
 	ErrMsgPlanNotFound        = "Plan tidak ditemukan"
+	ErrMsgInvalidPlan		 = "Plan tidak valid"
 	ErrMsgPlanInactive        = "Plan tidak tersedia"
 
 	// User errors
