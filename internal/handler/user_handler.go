@@ -28,6 +28,16 @@ func NewUserHandler(userUC usecase.UserUseCase, validator *utils.Validator) *Use
 }
 
 // GetProfile handler untuk get current user profile
+// @Summary Get current user profile
+// @Description Get details of the currently authenticated user's profile
+// @Tags profile
+// @Accept json
+// @Produce json
+// @Success 200 {object} utils.Response{data=dto.ProfileResponse}
+// @Failure 401 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /profile [get]
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	// Get profile ID from context
 	profileID, exists := middleware.GetProfileID(c)
@@ -47,6 +57,19 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 }
 
 // GetProfileByID handler untuk get profile by ID
+// @Summary Get user profile by ID (Admin Only)
+// @Description Get details of a specific user profile by its ID. Requires admin privileges.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "Profile ID"
+// @Success 200 {object} utils.Response{data=dto.ProfileResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /users/profiles/{id} [get]
 func (h *UserHandler) GetProfileByID(c *gin.Context) {
 	// Get profile ID from param
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -66,6 +89,18 @@ func (h *UserHandler) GetProfileByID(c *gin.Context) {
 }
 
 // CreateProfile handler untuk create profile
+// @Summary Create user profile
+// @Description Create a new user profile for the authenticated user.
+// @Tags profile
+// @Accept json
+// @Produce json
+// @Param body body dto.CreateProfileRequest true "Profile data"
+// @Success 201 {object} utils.Response{data=dto.ProfileResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /profile [post]
 func (h *UserHandler) CreateProfile(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := middleware.GetUserID(c)
@@ -98,6 +133,18 @@ func (h *UserHandler) CreateProfile(c *gin.Context) {
 }
 
 // UpdateProfile handler untuk update profile
+// @Summary Update current user profile
+// @Description Update the authenticated user's profile details.
+// @Tags profile
+// @Accept json
+// @Produce json
+// @Param body body dto.UpdateProfileRequest true "Update data"
+// @Success 200 {object} utils.Response{data=dto.ProfileResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /profile [put]
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	// Get profile ID from context
 	profileID, exists := middleware.GetProfileID(c)
@@ -130,6 +177,21 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 }
 
 // UpdateProfileByID handler untuk update profile by ID (admin only)
+// @Summary Update user profile by ID (Admin Only)
+// @Description Update a specific user's profile details by its ID. Requires admin privileges.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "Profile ID"
+// @Param body body dto.UpdateProfileRequest true "Update data"
+// @Success 200 {object} utils.Response{data=dto.ProfileResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 409 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /users/profiles/{id} [put]
 func (h *UserHandler) UpdateProfileByID(c *gin.Context) {
 	// Get profile ID from param
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -162,6 +224,17 @@ func (h *UserHandler) UpdateProfileByID(c *gin.Context) {
 }
 
 // DeleteProfile handler untuk delete profile
+// @Summary Delete current user profile
+// @Description Delete the authenticated user's profile (soft delete).
+// @Tags profile
+// @Accept json
+// @Produce json
+// @Success 204 {object} nil
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /profile [delete]
 func (h *UserHandler) DeleteProfile(c *gin.Context) {
 	// Get profile ID from context
 	profileID, exists := middleware.GetProfileID(c)
@@ -180,6 +253,19 @@ func (h *UserHandler) DeleteProfile(c *gin.Context) {
 }
 
 // DeleteProfileByID handler untuk delete profile by ID (admin only)
+// @Summary Delete user profile by ID (Admin Only)
+// @Description Delete a specific user's profile by its ID (soft delete). Requires admin privileges.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "Profile ID"
+// @Success 204 {object} nil
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
+// @Failure 403 {object} utils.Response
+// @Failure 404 {object} utils.Response
+// @Failure 500 {object} utils.Response
+// @Router /users/profiles/{id} [delete]
 func (h *UserHandler) DeleteProfileByID(c *gin.Context) {
 	// Get profile ID from param
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

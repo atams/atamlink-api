@@ -64,9 +64,9 @@ type BusinessFilter struct {
 }
 
 // BusinessStats statistik business
-type BusinessStats struct {
-	TotalUsers    int `json:"total_users"`
-	TotalCatalogs int `json:"total_catalogs"`
-	TotalProducts int `json:"total_products"`
-	TotalViews    int `json:"total_views"`
-}
+// type BusinessStats struct {
+// 	TotalUsers    int `json:"total_users"`
+// 	TotalCatalogs int `json:"total_catalogs"`
+// 	TotalProducts int `json:"total_products"`
+// 	TotalViews    int `json:"total_views"`
+// }

@@ -24,7 +24,7 @@ import (
 	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
 	masterUC "github.com/atam/atamlink/internal/mod_master/usecase"
 	userRepo "github.com/atam/atamlink/internal/mod_user/repository"
-	// userUC "github.com/atam/atamlink/internal/mod_user/usecase"
+	userUC "github.com/atam/atamlink/internal/mod_user/usecase"
 	"github.com/atam/atamlink/internal/service"
 	"github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/logger"
@@ -81,14 +81,14 @@ func New() (*App, error) {
 	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, masterRepository, slugService, uploadService)
 	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
 	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
-	// userUseCase := userUC.NewUserUseCase(db, userRepository)
+	userUseCase := userUC.NewUserUseCase(db, userRepository)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler(db)
 	businessHandler := handler.NewBusinessHandler(businessUseCase, uploadService, validator)
 	// catalogHandler := handler.NewCatalogHandler(catalogUseCase, uploadService, validator)
 	masterHandler := handler.NewMasterHandler(masterUseCase, validator)
-	// userHandler := handler.NewUserHandler(userUseCase, validator)
+	userHandler := handler.NewUserHandler(userUseCase, validator)
 
 	// Inisialisasi router Gin
 	if cfg.Server.Mode == "release" {
@@ -105,7 +105,8 @@ func New() (*App, error) {
 	setupSwagger(router, cfg)
 
 	// setupRoutes(router, cfg, auditService, healthHandler, businessHandler, catalogHandler, masterHandler, userHandler)
-	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, masterHandler, nil)
+	// setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, masterHandler, nil)
+	setupRoutes(router, cfg, auditService, healthHandler, businessHandler, nil, masterHandler, userHandler)
 
 	// Konfigurasi server HTTP
 	srv := &http.Server{
@@ -258,20 +259,20 @@ func setupRoutes(
 			masters.DELETE("/themes/:id", masterHandler.DeleteTheme)
 		}
 
-		// profile := api.Group("/profile")
-		// {
-		// 	profile.GET("", userHandler.GetProfile)
-		// 	profile.POST("", userHandler.CreateProfile)
-		// 	profile.PUT("", userHandler.UpdateProfile)
-		// 	profile.DELETE("", userHandler.DeleteProfile)
-		// }
+		profile := api.Group("/profile")
+		{
+			profile.GET("", userHandler.GetProfile)
+			profile.POST("", userHandler.CreateProfile)
+			profile.PUT("", userHandler.UpdateProfile)
+			profile.DELETE("", userHandler.DeleteProfile)
+		}
 
-		// // Rute untuk User Management (admin)
-		// users := api.Group("/users")
-		// {
-		// 	users.GET("/profiles/:id", userHandler.GetProfileByID)
-		// 	users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
-		// 	users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
-		// }
+		// Rute untuk User Management (admin)
+		users := api.Group("/users")
+		{
+			users.GET("/profiles/:id", userHandler.GetProfileByID)
+			users.PUT("/profiles/:id", userHandler.UpdateProfileByID)
+			users.DELETE("/profiles/:id", userHandler.DeleteProfileByID)
+		}
 	}
 }
