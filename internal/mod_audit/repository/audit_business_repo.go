@@ -1,3 +1,4 @@
+// internal/mod_audit/repository/audit_business_repo.go
 package repository
 
 import (
@@ -8,17 +9,17 @@ import (
 	"github.com/atam/atamlink/pkg/errors"
 )
 
-// AuditRepository interface untuk audit repository
+// AuditRepository interface untuk business audit repository
 type AuditRepository interface {
-	Create(log *entity.AuditLog) error
-	BatchCreate(logs []*entity.AuditLog) error
+	Create(log *entity.AuditLogBusiness) error
+	BatchCreate(logs []*entity.AuditLogBusiness) error
 }
 
 type auditRepository struct {
 	db *sql.DB
 }
 
-// NewAuditRepository membuat instance audit repository baru
+// NewAuditRepository membuat instance business audit repository baru
 func NewAuditRepository(db *sql.DB) AuditRepository {
 	return &auditRepository{db: db}
 }
@@ -37,20 +38,20 @@ func nullableJSON(data json.RawMessage) interface{} {
 	return data
 }
 
-// Create menyimpan audit log
-func (r *auditRepository) Create(log *entity.AuditLog) error {
+// Create menyimpan business audit log
+func (r *auditRepository) Create(log *entity.AuditLogBusiness) error {
 	contextJSON, err := json.Marshal(log.Context)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal context")
 	}
 
 	query := `
-		INSERT INTO atamlink.audit_logs (
-			al_timestamp, al_user_profile_id, al_business_id, al_action,
-			al_table_name, al_record_id, al_old_data, al_new_data,
-			al_context, al_reason
+		INSERT INTO atamlink.audit_logs_business (
+			alb_timestamp, alb_user_profile_id, alb_business_id, alb_action,
+			alb_table_name, alb_record_id, alb_old_data, alb_new_data,
+			alb_context, alb_reason
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING al_id`
+		RETURNING alb_id`
 
 	err = r.db.QueryRow(
 		query,
@@ -67,14 +68,14 @@ func (r *auditRepository) Create(log *entity.AuditLog) error {
 	).Scan(&log.ID)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to create audit log")
+		return errors.Wrap(err, "failed to create business audit log")
 	}
 
 	return nil
 }
 
-// BatchCreate menyimpan multiple audit logs
-func (r *auditRepository) BatchCreate(logs []*entity.AuditLog) error {
+// BatchCreate menyimpan multiple business audit logs
+func (r *auditRepository) BatchCreate(logs []*entity.AuditLogBusiness) error {
 	if len(logs) == 0 {
 		return nil
 	}
@@ -86,13 +87,15 @@ func (r *auditRepository) BatchCreate(logs []*entity.AuditLog) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO atamlink.audit_logs (
-			al_timestamp, al_user_profile_id, al_business_id, al_action,
-			al_table_name, al_record_id, al_old_data, al_new_data,
-			al_context, al_reason
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`)
+		INSERT INTO atamlink.audit_logs_business (
+			alb_timestamp, alb_user_profile_id, alb_business_id, alb_action,
+			alb_table_name, alb_record_id, alb_old_data, alb_new_data,
+			alb_context, alb_reason
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING alb_id`)
+
 	if err != nil {
-		return errors.Wrap(err, "failed to prepare statement")
+		return errors.Wrap(err, "failed to prepare batch insert statement")
 	}
 	defer stmt.Close()
 
@@ -102,7 +105,7 @@ func (r *auditRepository) BatchCreate(logs []*entity.AuditLog) error {
 			return errors.Wrap(err, "failed to marshal context")
 		}
 
-		_, err = stmt.Exec(
+		err = stmt.QueryRow(
 			log.Timestamp,
 			log.UserProfileID,
 			log.BusinessID,
@@ -113,11 +116,16 @@ func (r *auditRepository) BatchCreate(logs []*entity.AuditLog) error {
 			nullableJSON(log.NewData),
 			contextJSON,
 			log.Reason,
-		)
+		).Scan(&log.ID)
+
 		if err != nil {
-			return errors.Wrap(err, "failed to execute statement")
+			return errors.Wrap(err, "failed to insert business audit log")
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit batch insert")
+	}
+
+	return nil
 }

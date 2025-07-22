@@ -18,7 +18,7 @@ import (
 	"github.com/atam/atamlink/internal/middleware"
 	auditRepo "github.com/atam/atamlink/internal/mod_audit/repository"
 	businessRepo "github.com/atam/atamlink/internal/mod_business/repository"
-	"github.com/atam/atamlink/internal/mod_business/usecase"
+	businessUC "github.com/atam/atamlink/internal/mod_business/usecase"
 	// catalogRepo "github.com/atam/atamlink/internal/mod_catalog/repository"
 	// catalogUC "github.com/atam/atamlink/internal/mod_catalog/usecase"
 	masterRepo "github.com/atam/atamlink/internal/mod_master/repository"
@@ -71,14 +71,16 @@ func New() (*App, error) {
 	businessRepository := businessRepo.NewBusinessRepository(db)
 	// catalogRepository := catalogRepo.NewCatalogRepository(db)
 	masterRepository := masterRepo.NewMasterRepository(db)
-	auditRepository := auditRepo.NewAuditRepository(db)
+	// auditRepository := auditRepo.NewAuditRepository(db)
+	auditBusinessRepository := auditRepo.NewAuditRepository(db)
+	auditCatalogRepository := auditRepo.NewAuditCatalogRepository(db)
 
 	// Start audit service
-	auditService := service.NewAuditService(auditRepository, log)
+	auditService := service.NewAuditService(auditBusinessRepository, auditCatalogRepository, log)
 	auditService.Start()
 
 	// Use Cases
-	businessUseCase := usecase.NewBusinessUseCase(db, businessRepository, userRepository, masterRepository, slugService, uploadService)
+	businessUseCase := businessUC.NewBusinessUseCase(db, businessRepository, userRepository, masterRepository, slugService, uploadService)
 	// catalogUseCase := catalogUC.NewCatalogUseCase(db, catalogRepository, businessRepository, slugService)
 	masterUseCase := masterUC.NewMasterUseCase(db, masterRepository)
 	userUseCase := userUC.NewUserUseCase(db, userRepository)

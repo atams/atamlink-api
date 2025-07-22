@@ -2,16 +2,20 @@ package usecase
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atam/atamlink/internal/constant"
+	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/entity"
 	"github.com/atam/atamlink/pkg/errors"
 )
 
 // ActivateSubscription mengaktifkan langganan untuk bisnis (bypass pembayaran)
-func (uc *businessUseCase) ActivateSubscription(profileID int64, req *dto.ActivateSubscriptionRequest) (*dto.SubscriptionResponse, error) {
+func (uc *businessUseCase) ActivateSubscription(ctx *gin.Context, profileID int64, req *dto.ActivateSubscriptionRequest) (*dto.SubscriptionResponse, error) {
 	// Check business existence and user permission
 	err := uc.checkBusinessPermission(req.BusinessID, profileID, constant.PermSubscriptionUpdate)
 	if err != nil {
@@ -71,6 +75,20 @@ func (uc *businessUseCase) ActivateSubscription(profileID int64, req *dto.Activa
 	createdSub, err := uc.businessRepo.GetActiveSubscription(newSubscription.BusinessID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set audit data untuk SUBSCRIPTION_ACTIVATE
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, req.BusinessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", createdSub.ID))
+		middleware.SetAuditNewData(ctx, map[string]interface{}{
+			"plan_id":    createdSub.PlanID,
+			"plan_name":  createdSub.Plan.Name,
+			"price":      createdSub.Plan.Price,
+			"starts_at":  createdSub.StartsAt,
+			"expires_at": createdSub.ExpiresAt,
+			"status":     createdSub.Status,
+		})
 	}
 
 	return &dto.SubscriptionResponse{

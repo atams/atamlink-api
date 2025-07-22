@@ -46,7 +46,7 @@ func NewValidator() *Validator {
 // Validate melakukan validasi struct
 func (v *Validator) Validate(data interface{}) []ValidationErr {
 	var errors []ValidationErr
-
+	
 	err := v.validator.Struct(data)
 	if err == nil {
 		return errors
@@ -148,10 +148,16 @@ func registerCustomValidators(v *validator.Validate) {
 		return !strings.Contains(fl.Field().String(), " ")
 	})
 
-	// Business_role validator 🐞
+	// Business_role validator
 	v.RegisterValidation("business_role", func(fl validator.FieldLevel) bool {
 		role := fl.Field().String()
-		return constant.IsValidRole(role) // Use the existing helper function
+		return constant.IsValidRole(role)
+	})
+
+	// Business_type validator
+	v.RegisterValidation("business_type", func(fl validator.FieldLevel) bool {
+		businessType := fl.Field().String()
+		return constant.IsValidBusinessType(businessType)
 	})
 }
 

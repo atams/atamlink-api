@@ -23,16 +23,16 @@ type BusinessUseCase interface {
 	Delete(ctx *gin.Context, id int64, profileID int64) error
 
 	// User management
-	AddUser(businessID int64, profileID int64, req *dto.AddUserRequest) error
-	UpdateUserRole(businessID int64, profileID int64, targetProfileID int64, role string) error
-	RemoveUser(businessID int64, profileID int64, targetProfileID int64) error
+	AddUser(ctx *gin.Context, businessID int64, profileID int64, req *dto.AddUserRequest) error
+	UpdateUserRole(ctx *gin.Context, businessID int64, profileID int64, targetProfileID int64, role string) error
+	RemoveUser(ctx *gin.Context, businessID int64, profileID int64, targetProfileID int64) error
 
 	// Invite management
-	CreateInvite(businessID int64, profileID int64, req *dto.CreateInviteRequest) (*dto.InviteResponse, error)
-	AcceptInvite(req *dto.AcceptInviteRequest) error
+	CreateInvite(ctx *gin.Context, businessID int64, profileID int64, req *dto.CreateInviteRequest) (*dto.InviteResponse, error)
+	AcceptInvite(ctx *gin.Context, req *dto.AcceptInviteRequest) error
 
 	// Subscription management
-	ActivateSubscription(profileID int64, req *dto.ActivateSubscriptionRequest) (*dto.SubscriptionResponse, error)
+	ActivateSubscription(ctx *gin.Context, profileID int64, req *dto.ActivateSubscriptionRequest) (*dto.SubscriptionResponse, error)
 }
 
 type businessUseCase struct {

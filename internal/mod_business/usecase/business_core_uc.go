@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -128,10 +129,11 @@ func (uc *businessUseCase) Create(ctx *gin.Context, profileID int64, req *dto.Cr
 		return nil, err
 	}
 
-	// Set new data untuk audit (data business setelah create)
-	// Untuk CREATE, old_data kosong, new_data berisi data yang dibuat
+	// Set audit data untuk CREATE business
 	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditNewData, createdBusiness)
+		middleware.SetAuditBusinessID(ctx, business.ID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", business.ID))
+		middleware.SetAuditNewData(ctx, createdBusiness)
 	}
 
 	return createdBusiness, nil
@@ -257,12 +259,7 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 	}
 
 	// Create deep copy untuk old data audit SEBELUM modifikasi
-	oldBusinessData := uc.deepCopyBusiness(business)
-
-	// Set old data untuk audit dengan deep copy
-	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditOldData, oldBusinessData)
-	}
+	oldBusinessData := uc.deepCopyBusinessForAudit(business)
 
 	// Check permission
 	if err := uc.checkBusinessPermission(id, profileID, constant.PermBusinessUpdate); err != nil {
@@ -287,7 +284,7 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		oldLogoURL = business.LogoURL.String
 	}
 
-	// Update fields pada business object (setelah deep copy dibuat)
+	// Update fields pada business object
 	if req.Name != "" {
 		business.Name = req.Name
 	}
@@ -352,9 +349,12 @@ func (uc *businessUseCase) Update(ctx *gin.Context, id int64, profileID int64, r
 		return nil, err
 	}
 
-	// Set new data untuk audit (data business setelah update)
+	// Set audit data untuk UPDATE business
 	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditNewData, updatedBusiness)
+		middleware.SetAuditBusinessID(ctx, id)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", id))
+		middleware.SetAuditOldData(ctx, oldBusinessData)
+		middleware.SetAuditNewData(ctx, updatedBusiness)
 	}
 
 	return updatedBusiness, nil
@@ -369,12 +369,7 @@ func (uc *businessUseCase) Delete(ctx *gin.Context, id int64, profileID int64) e
 	}
 
 	// Create deep copy untuk old data audit
-	oldBusinessData := uc.deepCopyBusiness(business)
-
-	// Set old data untuk audit
-	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditOldData, oldBusinessData)
-	}
+	oldBusinessData := uc.deepCopyBusinessForAudit(business)
 
 	// Check permission
 	if err := uc.checkBusinessPermission(id, profileID, constant.PermBusinessDelete); err != nil {
@@ -396,9 +391,13 @@ func (uc *businessUseCase) Delete(ctx *gin.Context, id int64, profileID int64) e
 		return errors.Wrap(err, "failed to commit transaction")
 	}
 
-	// Untuk DELETE, new_data adalah null (tidak ada data baru)
+	// Set audit data untuk DELETE business
 	if ctx != nil {
-		ctx.Set(middleware.GinKeyAuditNewData, nil)
+		middleware.SetAuditBusinessID(ctx, id)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", id))
+		middleware.SetAuditOldData(ctx, oldBusinessData)
+		// Untuk DELETE, new_data adalah null
+		middleware.SetAuditNewData(ctx, nil)
 	}
 
 	return nil

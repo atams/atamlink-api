@@ -45,8 +45,26 @@ DROP INDEX IF EXISTS atamlink.ix_users_u_username;
 DROP INDEX IF EXISTS atamlink.idx_users_email_active;
 DROP INDEX IF EXISTS atamlink.idx_users_username_active;
 
+-- Indexes untuk audit_logs_business
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_user_profile_id;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_business_id;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_timestamp;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_record;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_action;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_business_context_gin;
+
+-- Indexes untuk audit_logs_catalog (tambahan baru)
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_user_profile_id;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_catalog_id;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_timestamp;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_record;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_action;
+DROP INDEX IF EXISTS atamlink.idx_audit_logs_catalog_context_gin;
+
 -- Drop Tables
 DROP TABLE IF EXISTS
+    atamlink.audit_logs_catalog,
+    atamlink.audit_logs_business,
     atamlink.catalog_testimonials,
     atamlink.catalog_socials,
     atamlink.catalog_links,
@@ -69,29 +87,8 @@ DROP TABLE IF EXISTS
     atamlink.users
 CASCADE;
 
--- Drop ENUMs
-DROP TYPE IF EXISTS business_type;
-DROP TYPE IF EXISTS business_role;
-DROP TYPE IF EXISTS subscription_status;
-DROP TYPE IF EXISTS section_type;
-DROP TYPE IF EXISTS card_type;
-DROP TYPE IF EXISTS link_type;
-DROP TYPE IF EXISTS media_type;
-DROP TYPE IF EXISTS social_platform;
-DROP TYPE IF EXISTS theme_type;
-DROP TYPE IF EXISTS currency_type;
-
 -- Drop extension
 DROP EXTENSION IF EXISTS "uuid-ossp";
 
-DROP TYPE IF EXISTS audit_action_type;
-
 DROP TABLE IF EXISTS atamlink.audit_logs CASCADE;
 
-DROP INDEX IF EXISTS idx_audit_logs_user_profile_id;
-DROP INDEX IF EXISTS idx_audit_logs_business_id;
-DROP INDEX IF EXISTS idx_audit_logs_timestamp;
-DROP INDEX IF EXISTS idx_audit_logs_record;
-DROP INDEX IF EXISTS idx_audit_logs_action;
-
-DROP INDEX IF EXISTS idx_audit_logs_context_gin;

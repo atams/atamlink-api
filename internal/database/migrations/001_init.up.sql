@@ -3,107 +3,7 @@ CREATE SCHEMA IF NOT EXISTS atamlink;
 -- UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ENUMs
-CREATE TYPE business_type AS ENUM (
-    'retail',
-    'service',
-    'manufacturing',
-    'technology',
-    'hospitality',
-    'healthcare',
-    'education',
-    'other'
-);
-
-CREATE TYPE business_role AS ENUM (
-    'owner',
-    'admin',
-    'editor',
-    'viewer'
-);
-
-CREATE TYPE subscription_status AS ENUM (
-    'active',
-    'expired',
-    'cancelled',
-    'pending',
-    'suspended'
-);
-
-CREATE TYPE section_type AS ENUM (
-    'hero',
-    'cards',
-    'carousel',
-    'faqs',
-    'links',
-    'socials',
-    'testimonials',
-    'cta',
-    'text',
-    'video'
-);
-
-CREATE TYPE card_type AS ENUM (
-    'product',
-    'service',
-    'portfolio',
-    'article',
-    'event',
-    'offer'
-);
-
-CREATE TYPE link_type AS ENUM (
-    'whatsapp',
-    'shopee',
-    'tokopedia',
-    'website',
-    'tiktokshop',
-    'facebook',
-    'instagram',
-    'telegram',
-    'email',
-    'phone',
-    'custom'
-);
-
-CREATE TYPE media_type AS ENUM (
-    'thumbnail',
-    'cover',
-    'gallery',
-    'video',
-    'document'
-);
-
-CREATE TYPE social_platform AS ENUM (
-    'facebook',
-    'instagram',
-    'twitter',
-    'linkedin',
-    'youtube',
-    'tiktok',
-    'whatsapp',
-    'telegram',
-    'pinterest',
-    'github'
-);
-
-CREATE TYPE theme_type AS ENUM (
-    'minimal',
-    'modern',
-    'classic',
-    'bold',
-    'elegant',
-    'playful',
-    'professional',
-    'creative'
-);
-
-CREATE TYPE currency_type AS ENUM (
-    'IDR'
-);
-
 -- Tables
-
 CREATE TABLE atamlink.users (
     "u_id" uuid DEFAULT uuid_generate_v4() NOT NULL,
     "u_email" character varying(255) NOT NULL,
@@ -140,7 +40,7 @@ CREATE TABLE atamlink.master_themes (
     mt_id BIGSERIAL PRIMARY KEY,
     mt_name VARCHAR(100) NOT NULL UNIQUE,
     mt_description TEXT,
-    mt_type theme_type NOT NULL,
+    mt_type VARCHAR NOT NULL,
     mt_default_settings JSONB NOT NULL DEFAULT '{}',
     mt_is_premium BOOLEAN NOT NULL DEFAULT false,
     mt_is_active BOOLEAN NOT NULL DEFAULT true,
@@ -161,7 +61,7 @@ CREATE TABLE atamlink.businesses (
     b_slug VARCHAR(100) NOT NULL UNIQUE,
     b_name VARCHAR(200) NOT NULL,
     b_logo_url VARCHAR,
-    b_type business_type NOT NULL,
+    b_type VARCHAR NOT NULL,
     b_is_active BOOLEAN NOT NULL DEFAULT true,
     b_is_suspended BOOLEAN NOT NULL DEFAULT false,
     b_suspension_reason TEXT,
@@ -177,7 +77,7 @@ CREATE TABLE atamlink.business_users (
     bu_id BIGSERIAL PRIMARY KEY,
     bu_b_id BIGINT NOT NULL REFERENCES atamlink.businesses(b_id) ON DELETE CASCADE,
     bu_up_id BIGINT NOT NULL REFERENCES atamlink.user_profiles(up_id) ON DELETE CASCADE,
-    bu_role business_role NOT NULL DEFAULT 'viewer',
+    bu_role VARCHAR NOT NULL,
     bu_is_owner BOOLEAN NOT NULL DEFAULT false,
     bu_is_active BOOLEAN NOT NULL DEFAULT true,
     bu_created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -188,7 +88,7 @@ CREATE TABLE atamlink.business_invites (
     bi_id BIGSERIAL PRIMARY KEY,
     bi_b_id BIGINT NOT NULL REFERENCES atamlink.businesses(b_id) ON DELETE CASCADE,
     bi_token VARCHAR(100) NOT NULL UNIQUE,
-    bi_role business_role NOT NULL DEFAULT 'viewer',
+    bi_role VARCHAR NOT NULL,
     bi_invited_by BIGINT NOT NULL,
     bi_is_used BOOLEAN NOT NULL DEFAULT false,
     bi_expires_at TIMESTAMP NOT NULL,
@@ -199,7 +99,7 @@ CREATE TABLE atamlink.business_subscriptions (
     bs_id BIGSERIAL PRIMARY KEY,
     bs_b_id BIGINT NOT NULL REFERENCES atamlink.businesses(b_id) ON DELETE CASCADE,
     bs_mp_id BIGINT NOT NULL REFERENCES atamlink.master_plans(mp_id),
-    bs_status subscription_status NOT NULL DEFAULT 'pending',
+    bs_status VARCHAR NOT NULL,
     bs_starts_at TIMESTAMP NOT NULL,
     bs_expires_at TIMESTAMP NOT NULL,
     bs_created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -225,7 +125,7 @@ CREATE TABLE atamlink.catalogs (
 CREATE TABLE atamlink.catalog_sections (
     cs_id BIGSERIAL PRIMARY KEY,
     cs_c_id BIGINT NOT NULL REFERENCES atamlink.catalogs(c_id) ON DELETE CASCADE,
-    cs_type section_type NOT NULL,
+    cs_type VARCHAR NOT NULL,
     cs_is_visible BOOLEAN NOT NULL DEFAULT true,
     cs_config JSONB DEFAULT '{}',
     cs_created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -237,13 +137,13 @@ CREATE TABLE atamlink.catalog_cards (
     cc_cs_id BIGINT NOT NULL REFERENCES atamlink.catalog_sections(cs_id) ON DELETE CASCADE,
     cc_title VARCHAR(200) NOT NULL,
     cc_subtitle VARCHAR(300),
-    cc_type card_type NOT NULL,
+    cc_type VARCHAR NOT NULL,
     cc_url VARCHAR(500),
     cc_is_visible BOOLEAN NOT NULL DEFAULT true,
     cc_has_detail BOOLEAN NOT NULL DEFAULT false,
     cc_price INTEGER,
     cc_discount INTEGER DEFAULT 0,
-    cc_currency currency_type DEFAULT 'IDR',
+    cc_currency VARCHAR DEFAULT 'IDR',
     cc_created_by BIGINT NOT NULL,
     cc_created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cc_updated_by BIGINT,
@@ -265,7 +165,7 @@ CREATE TABLE atamlink.catalog_card_details (
 CREATE TABLE atamlink.catalog_card_media (
     ccm_id BIGSERIAL PRIMARY KEY,
     ccm_cc_id BIGINT NOT NULL REFERENCES atamlink.catalog_cards(cc_id) ON DELETE CASCADE,
-    ccm_type media_type NOT NULL,
+    ccm_type VARCHAR NOT NULL,
     ccm_url VARCHAR(500) NOT NULL,
     ccm_created_by BIGINT NOT NULL,
     ccm_created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -276,7 +176,7 @@ CREATE TABLE atamlink.catalog_card_media (
 CREATE TABLE atamlink.catalog_card_links (
     ccl_id BIGSERIAL PRIMARY KEY,
     ccl_ccd_id BIGINT NOT NULL REFERENCES atamlink.catalog_card_details(ccd_id) ON DELETE CASCADE,
-    ccl_type link_type NOT NULL,
+    ccl_type VARCHAR NOT NULL,
     ccl_url VARCHAR(500) NOT NULL,
     ccl_is_visible BOOLEAN NOT NULL DEFAULT true,
     ccl_created_by BIGINT NOT NULL,
@@ -336,7 +236,7 @@ CREATE TABLE atamlink.catalog_links (
 CREATE TABLE atamlink.catalog_socials (
     csoc_id BIGSERIAL PRIMARY KEY,
     csoc_cs_id BIGINT NOT NULL REFERENCES atamlink.catalog_sections(cs_id) ON DELETE CASCADE,
-    csoc_platform social_platform NOT NULL,
+    csoc_platform VARCHAR NOT NULL,
     csoc_url VARCHAR(500) NOT NULL,
     csoc_is_visible BOOLEAN NOT NULL DEFAULT true,
     csoc_created_by BIGINT NOT NULL,
@@ -404,36 +304,52 @@ CREATE UNIQUE INDEX ix_users_u_username ON atamlink.users USING btree (u_usernam
 CREATE INDEX idx_users_email_active ON atamlink.users USING btree (u_email) WHERE (u_is_active = true);
 CREATE INDEX idx_users_username_active ON atamlink.users USING btree (u_username) WHERE (u_is_active = true);
 
--- ENUM untuk jenis aksi audit
-CREATE TYPE audit_action_type AS ENUM (
-    'CREATE',
-    'UPDATE',
-    'DELETE',
-    'INVITE_SENT',
-    'INVITE_USED'
-);
-
 -- Tabel utama untuk Audit Log
-CREATE TABLE atamlink.audit_logs (
-    al_id BIGSERIAL PRIMARY KEY,
-    al_timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
-    al_user_profile_id BIGINT REFERENCES atamlink.user_profiles(up_id) ON DELETE SET NULL,
-    al_business_id BIGINT REFERENCES atamlink.businesses(b_id) ON DELETE SET NULL,
-    al_action audit_action_type NOT NULL,
-    al_table_name TEXT,
-    al_record_id TEXT,
-    al_old_data JSONB,
-    al_new_data JSONB,
-    al_context JSONB,
-    al_reason TEXT
+CREATE TABLE atamlink.audit_logs_business (
+    alb_id BIGSERIAL PRIMARY KEY,
+    alb_timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    alb_user_profile_id BIGINT REFERENCES atamlink.user_profiles(up_id) ON DELETE SET NULL,
+    alb_business_id BIGINT REFERENCES atamlink.businesses(b_id) ON DELETE SET NULL,
+    alb_action audit_action_type NOT NULL,
+    alb_table_name VARCHAR,
+    alb_record_id VARCHAR,
+    alb_old_data JSONB,
+    alb_new_data JSONB,
+    alb_context JSONB,
+    alb_reason TEXT
 );
 
 -- Indexes untuk mempercepat query pada tabel audit_logs
-CREATE INDEX idx_audit_logs_user_profile_id ON atamlink.audit_logs(al_user_profile_id);
-CREATE INDEX idx_audit_logs_business_id ON atamlink.audit_logs(al_business_id);
-CREATE INDEX idx_audit_logs_timestamp ON atamlink.audit_logs(al_timestamp);
-CREATE INDEX idx_audit_logs_record ON atamlink.audit_logs(al_table_name, al_record_id);
-CREATE INDEX idx_audit_logs_action ON atamlink.audit_logs(al_action);
+CREATE INDEX idx_audit_logs_business_user_profile_id ON atamlink.audit_logs_business(alb_user_profile_id);
+CREATE INDEX idx_audit_logs_business_business_id ON atamlink.audit_logs_business(alb_business_id);
+CREATE INDEX idx_audit_logs_business_timestamp ON atamlink.audit_logs_business(alb_timestamp);
+CREATE INDEX idx_audit_logs_business_record ON atamlink.audit_logs_business(alb_table_name, alb_record_id);
+CREATE INDEX idx_audit_logs_business_action ON atamlink.audit_logs_business(alb_action);
 
 -- Index GIN pada kolom JSONB agar bisa melakukan query ke dalam datanya secara efisien
-CREATE INDEX idx_audit_logs_context_gin ON atamlink.audit_logs USING GIN(al_context);
+CREATE INDEX idx_audit_logs_business_context_gin ON atamlink.audit_logs_business USING GIN(alb_context);
+
+-- Tabel utama untuk Audit Log Katalog
+CREATE TABLE atamlink.audit_logs_catalog (
+    alc_id BIGSERIAL PRIMARY KEY,
+    alc_timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    alc_user_profile_id BIGINT REFERENCES atamlink.user_profiles(up_id) ON DELETE SET NULL,
+    alc_catalog_id BIGINT REFERENCES atamlink.catalogs(c_id) ON DELETE SET NULL,
+    alc_action VARCHAR NOT NULL, 
+    alc_table_name TEXT NOT NULL, -- Nama tabel yang terpengaruh (e.g., 'catalogs', 'catalog_sections')
+    alc_record_id VARCHAR,
+    alc_old_data JSONB,
+    alc_new_data JSONB,
+    alc_context JSONB, -- Bisa berisi ID spesifik dari section/card/item yang terpengaruh
+    alc_reason TEXT
+);
+
+-- Indexes untuk mempercepat query pada tabel audit_logs_catalog
+CREATE INDEX idx_audit_logs_catalog_user_profile_id ON atamlink.audit_logs_catalog(alc_user_profile_id);
+CREATE INDEX idx_audit_logs_catalog_catalog_id ON atamlink.audit_logs_catalog(alc_catalog_id);
+CREATE INDEX idx_audit_logs_catalog_timestamp ON atamlink.audit_logs_catalog(alc_timestamp);
+CREATE INDEX idx_audit_logs_catalog_record ON atamlink.audit_logs_catalog(alc_table_name, alc_record_id);
+CREATE INDEX idx_audit_logs_catalog_action ON atamlink.audit_logs_catalog(alc_action);
+
+-- Index GIN pada kolom JSONB agar bisa melakukan query ke dalam datanya secara efisien
+CREATE INDEX idx_audit_logs_catalog_context_gin ON atamlink.audit_logs_catalog USING GIN(alc_context);

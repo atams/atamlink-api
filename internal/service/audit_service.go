@@ -6,24 +6,31 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	
+	"github.com/atam/atamlink/internal/constant"
 	"github.com/atam/atamlink/internal/mod_audit/entity"
 	"github.com/atam/atamlink/internal/mod_audit/repository"
 	"github.com/atam/atamlink/pkg/logger"
 )
 
-// AuditService service untuk handle audit logging
+// AuditService interface untuk audit service
 type AuditService interface {
 	Start()
 	Stop()
-	Log(entry *AuditEntry)
-	// Tambahan untuk async processing yang aman
+	LogBusinessAction(ctx context.Context, profileID *int64, businessID *int64, action, table, recordID string, oldData, newData interface{}, reason string)
+	LogCatalogAction(ctx context.Context, profileID *int64, catalogID *int64, action, table, recordID string, oldData, newData interface{}, reason string)
 	LogAsync(entry *AuditEntry)
+	LogBusinessActionAsync(profileID *int64, businessID *int64, action, table, recordID string, oldData, newData interface{}, reason string)
+	LogCatalogActionAsync(profileID *int64, catalogID *int64, action, table, recordID string, oldData, newData interface{}, reason string)
 }
 
 // AuditEntry entry untuk audit log
 type AuditEntry struct {
+	Type          string                 // "business" atau "catalog"
 	UserProfileID *int64
 	BusinessID    *int64
+	CatalogID     *int64
 	Action        string
 	Table         string
 	RecordID      string
@@ -33,176 +40,306 @@ type AuditEntry struct {
 	Reason        string
 }
 
-// DeepCopyAuditEntry membuat deep copy dari audit entry
-func DeepCopyAuditEntry(entry *AuditEntry) *AuditEntry {
-	if entry == nil {
-		return nil
-	}
-
-	copied := &AuditEntry{
-		Action:   entry.Action,
-		Table:    entry.Table,
-		RecordID: entry.RecordID,
-		Reason:   entry.Reason,
-	}
-
-	// Copy pointer fields
-	if entry.UserProfileID != nil {
-		profileID := *entry.UserProfileID
-		copied.UserProfileID = &profileID
-	}
-
-	if entry.BusinessID != nil {
-		businessID := *entry.BusinessID
-		copied.BusinessID = &businessID
-	}
-
-	// Deep copy JSON data
-	if entry.OldData != nil {
-		copied.OldData = make(json.RawMessage, len(entry.OldData))
-		copy(copied.OldData, entry.OldData)
-	}
-
-	if entry.NewData != nil {
-		copied.NewData = make(json.RawMessage, len(entry.NewData))
-		copy(copied.NewData, entry.NewData)
-	}
-
-	// Deep copy context map
-	if entry.Context != nil {
-		copied.Context = make(map[string]interface{})
-		for k, v := range entry.Context {
-			// Handle nested maps/slices if needed
-			switch val := v.(type) {
-			case map[string]interface{}:
-				// Deep copy nested map
-				nestedMap := make(map[string]interface{})
-				for nk, nv := range val {
-					nestedMap[nk] = nv
-				}
-				copied.Context[k] = nestedMap
-			case []interface{}:
-				// Deep copy slice
-				slice := make([]interface{}, len(val))
-				copy(slice, val)
-				copied.Context[k] = slice
-			default:
-				// Primitive types are copied by value
-				copied.Context[k] = v
-			}
-		}
-	}
-
-	return copied
-}
-
 type auditService struct {
-	repo      repository.AuditRepository
-	log       logger.Logger
-	queue     chan *entity.AuditLog
-	batchSize int
-	flushTime time.Duration
-	wg        sync.WaitGroup
-	stop      chan bool
-	// Pool untuk mengurangi alokasi memory
-	entryPool sync.Pool
+	businessRepo repository.AuditRepository
+	catalogRepo  repository.AuditCatalogRepository
+	logger       logger.Logger
+	channel      chan *AuditEntry
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	isRunning    bool
+	mu           sync.RWMutex
 }
 
 // NewAuditService membuat instance audit service baru
-func NewAuditService(repo repository.AuditRepository, log logger.Logger) AuditService {
-	s := &auditService{
-		repo:      repo,
-		log:       log,
-		queue:     make(chan *entity.AuditLog, 1000),
-		batchSize: 10,
-		flushTime: 5 * time.Second,
-		stop:      make(chan bool),
+func NewAuditService(businessRepo repository.AuditRepository, catalogRepo repository.AuditCatalogRepository, log logger.Logger) AuditService {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &auditService{
+		businessRepo: businessRepo,
+		catalogRepo:  catalogRepo,
+		logger:       log,
+		channel:      make(chan *AuditEntry, 1000), // Buffer 1000 entries
+		ctx:          ctx,
+		cancel:       cancel,
+		isRunning:    false,
 	}
-
-	// Initialize pool
-	s.entryPool = sync.Pool{
-		New: func() interface{} {
-			return &entity.AuditLog{}
-		},
-	}
-
-	return s
 }
 
 // Start memulai audit service worker
 func (s *auditService) Start() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.isRunning {
+		return
+	}
+	
+	s.isRunning = true
 	s.wg.Add(1)
+	
 	go s.worker()
-	s.log.Info("Audit service started")
+	s.logger.Info("Audit service started")
 }
 
-// Stop menghentikan audit service dengan graceful shutdown
+// Stop menghentikan audit service
 func (s *auditService) Stop() {
-	s.log.Info("Stopping audit service...")
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	
-	// Signal stop
-	close(s.stop)
-	
-	// Wait for worker to finish with timeout
-	done := make(chan bool)
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		s.log.Info("Audit service stopped gracefully")
-	case <-time.After(30 * time.Second):
-		s.log.Error("Audit service stop timeout")
+	if !s.isRunning {
+		return
 	}
-
-	close(s.queue)
+	
+	s.cancel()
+	close(s.channel)
+	s.wg.Wait()
+	s.isRunning = false
+	s.logger.Info("Audit service stopped")
 }
 
-// Log menambahkan entry ke queue (synchronous)
-func (s *auditService) Log(entry *AuditEntry) {
-	auditLog := s.convertToAuditLog(entry)
+// worker goroutine untuk memproses audit entries
+func (s *auditService) worker() {
+	defer s.wg.Done()
 	
-	// Non-blocking send dengan timeout
-	select {
-	case s.queue <- auditLog:
-		// Successfully queued
-	case <-time.After(100 * time.Millisecond):
-		// Timeout, log error
-		s.log.Error("Audit queue timeout",
-			logger.String("action", entry.Action),
-			logger.String("table", entry.Table),
-			logger.String("record", entry.RecordID),
-		)
-	default:
-		// Queue full, log error
-		s.log.Error("Audit queue full",
-			logger.String("action", entry.Action),
-			logger.String("table", entry.Table),
-			logger.String("record", entry.RecordID),
-		)
+	batchSize := 50
+	batchTimeout := 5 * time.Second
+	
+	businessBatch := make([]*entity.AuditLogBusiness, 0, batchSize)
+	catalogBatch := make([]*entity.AuditLogCatalog, 0, batchSize)
+	
+	ticker := time.NewTicker(batchTimeout)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case entry, ok := <-s.channel:
+			if !ok {
+				// Channel closed, process remaining entries
+				s.processBatches(businessBatch, catalogBatch)
+				return
+			}
+			
+			if entry.Type == constant.AuditTypeBusiness {
+				businessLog := s.convertToBusinessLog(entry)
+				businessBatch = append(businessBatch, businessLog)
+				
+				if len(businessBatch) >= batchSize {
+					s.processBusinessBatch(businessBatch)
+					businessBatch = businessBatch[:0]
+				}
+			} else {
+				catalogLog := s.convertToCatalogLog(entry)
+				catalogBatch = append(catalogBatch, catalogLog)
+				
+				if len(catalogBatch) >= batchSize {
+					s.processCatalogBatch(catalogBatch)
+					catalogBatch = catalogBatch[:0]
+				}
+			}
+			
+		case <-ticker.C:
+			// Process batches periodically
+			s.processBatches(businessBatch, catalogBatch)
+			businessBatch = businessBatch[:0]
+			catalogBatch = catalogBatch[:0]
+			
+		case <-s.ctx.Done():
+			// Context cancelled, process remaining entries
+			s.processBatches(businessBatch, catalogBatch)
+			return
+		}
 	}
 }
 
-// LogAsync menambahkan entry ke queue secara asynchronous dengan deep copy
+// processBatches memproses kedua batch
+func (s *auditService) processBatches(businessBatch []*entity.AuditLogBusiness, catalogBatch []*entity.AuditLogCatalog) {
+	if len(businessBatch) > 0 {
+		s.processBusinessBatch(businessBatch)
+	}
+	if len(catalogBatch) > 0 {
+		s.processCatalogBatch(catalogBatch)
+	}
+}
+
+// processBusinessBatch memproses batch business audit logs
+func (s *auditService) processBusinessBatch(batch []*entity.AuditLogBusiness) {
+	if len(batch) == 0 {
+		return
+	}
+	
+	if err := s.businessRepo.BatchCreate(batch); err != nil {
+		s.logger.Error("Failed to batch create business audit logs", 
+			logger.Error(err), 
+			logger.Int("count", len(batch)))
+		// Fallback: try to save individually
+		for _, log := range batch {
+			if err := s.businessRepo.Create(log); err != nil {
+				s.logger.Error("Failed to create business audit log", 
+					logger.Error(err), 
+					logger.Int64("log_id", log.ID))
+			}
+		}
+	} else {
+		s.logger.Debug("Business audit logs batch processed", logger.Int("count", len(batch)))
+	}
+}
+
+// processCatalogBatch memproses batch catalog audit logs
+func (s *auditService) processCatalogBatch(batch []*entity.AuditLogCatalog) {
+	if len(batch) == 0 {
+		return
+	}
+	
+	if err := s.catalogRepo.BatchCreate(batch); err != nil {
+		s.logger.Error("Failed to batch create catalog audit logs", 
+			logger.Error(err), 
+			logger.Int("count", len(batch)))
+		// Fallback: try to save individually
+		for _, log := range batch {
+			if err := s.catalogRepo.Create(log); err != nil {
+				s.logger.Error("Failed to create catalog audit log", 
+					logger.Error(err), 
+					logger.Int64("log_id", log.ID))
+			}
+		}
+	} else {
+		s.logger.Debug("Catalog audit logs batch processed", logger.Int("count", len(batch)))
+	}
+}
+
+// LogBusinessAction logs business-related action (synchronous)
+func (s *auditService) LogBusinessAction(ctx context.Context, profileID *int64, businessID *int64, action, table, recordID string, oldData, newData interface{}, reason string) {
+	entry := s.createAuditEntry(constant.AuditTypeBusiness, profileID, businessID, nil, action, table, recordID, oldData, newData, reason)
+	s.addContextFromGin(ctx, entry)
+	
+	// Process immediately for critical actions
+	if s.isCriticalAction(action) {
+		businessLog := s.convertToBusinessLog(entry)
+		if err := s.businessRepo.Create(businessLog); err != nil {
+			s.logger.Error("Failed to create critical business audit log", logger.Error(err))
+		}
+		return
+	}
+	
+	s.LogAsync(entry)
+}
+
+// LogCatalogAction logs catalog-related action (synchronous)
+func (s *auditService) LogCatalogAction(ctx context.Context, profileID *int64, catalogID *int64, action, table, recordID string, oldData, newData interface{}, reason string) {
+	entry := s.createAuditEntry(constant.AuditTypeCatalog, profileID, nil, catalogID, action, table, recordID, oldData, newData, reason)
+	s.addContextFromGin(ctx, entry)
+	
+	// Process immediately for critical actions
+	if s.isCriticalAction(action) {
+		catalogLog := s.convertToCatalogLog(entry)
+		if err := s.catalogRepo.Create(catalogLog); err != nil {
+			s.logger.Error("Failed to create critical catalog audit log", logger.Error(err))
+		}
+		return
+	}
+	
+	s.LogAsync(entry)
+}
+
+// LogBusinessActionAsync logs business action asynchronously
+func (s *auditService) LogBusinessActionAsync(profileID *int64, businessID *int64, action, table, recordID string, oldData, newData interface{}, reason string) {
+	entry := s.createAuditEntry(constant.AuditTypeBusiness, profileID, businessID, nil, action, table, recordID, oldData, newData, reason)
+	s.LogAsync(entry)
+}
+
+// LogCatalogActionAsync logs catalog action asynchronously
+func (s *auditService) LogCatalogActionAsync(profileID *int64, catalogID *int64, action, table, recordID string, oldData, newData interface{}, reason string) {
+	entry := s.createAuditEntry(constant.AuditTypeCatalog, profileID, nil, catalogID, action, table, recordID, oldData, newData, reason)
+	s.LogAsync(entry)
+}
+
+// LogAsync menambahkan entry ke channel untuk diproses asinkron
 func (s *auditService) LogAsync(entry *AuditEntry) {
-	// Deep copy entry untuk menghindari data race
-	copiedEntry := DeepCopyAuditEntry(entry)
+	s.mu.RLock()
+	isRunning := s.isRunning
+	s.mu.RUnlock()
 	
-	// Process in goroutine
-	go func() {
-		s.Log(copiedEntry)
-	}()
+	if !isRunning {
+		s.logger.Warn("Audit service not running, skipping log entry")
+		return
+	}
+	
+	// Deep copy entry untuk menghindari race condition
+	copiedEntry := s.deepCopyEntry(entry)
+	
+	select {
+	case s.channel <- copiedEntry:
+		// Successfully queued
+	default:
+		// Channel full, log error and drop entry
+		s.logger.Error("Audit channel full, dropping entry", 
+			logger.String("action", entry.Action), 
+			logger.String("table", entry.Table))
+	}
 }
 
-// convertToAuditLog konversi AuditEntry ke entity.AuditLog
-func (s *auditService) convertToAuditLog(entry *AuditEntry) *entity.AuditLog {
-	// Get from pool or create new
-	auditLog := s.entryPool.Get().(*entity.AuditLog)
+// createAuditEntry membuat audit entry baru
+func (s *auditService) createAuditEntry(entryType string, profileID, businessID, catalogID *int64, action, table, recordID string, oldData, newData interface{}, reason string) *AuditEntry {
+	entry := &AuditEntry{
+		Type:          entryType,
+		UserProfileID: profileID,
+		BusinessID:    businessID,
+		CatalogID:     catalogID,
+		Action:        action,
+		Table:         table,
+		RecordID:      recordID,
+		Context:       make(map[string]interface{}),
+		Reason:        reason,
+	}
 	
-	// Reset and populate
-	*auditLog = entity.AuditLog{
+	// Convert data to JSON
+	if oldData != nil {
+		if jsonData, err := json.Marshal(oldData); err == nil {
+			entry.OldData = jsonData
+		}
+	}
+	
+	if newData != nil {
+		if jsonData, err := json.Marshal(newData); err == nil {
+			entry.NewData = jsonData
+		}
+	}
+	
+	// Add default reason if empty
+	if entry.Reason == "" {
+		entry.Reason = constant.GetAuditMessage(action)
+	}
+	
+	return entry
+}
+
+// addContextFromGin menambahkan context dari Gin context
+func (s *auditService) addContextFromGin(ctx context.Context, entry *AuditEntry) {
+	if ginCtx, ok := ctx.(*gin.Context); ok {
+		entry.Context["request_id"] = ginCtx.GetString("request_id")
+		entry.Context["user_agent"] = ginCtx.GetHeader("User-Agent")
+		entry.Context["ip_address"] = ginCtx.ClientIP()
+		entry.Context["method"] = ginCtx.Request.Method
+		entry.Context["path"] = ginCtx.Request.URL.Path
+	}
+}
+
+// isCriticalAction menentukan apakah action perlu diproses segera
+func (s *auditService) isCriticalAction(action string) bool {
+	criticalActions := map[string]bool{
+		constant.AuditActionDelete:             true,
+		constant.AuditActionBusinessSuspend:    true,
+		constant.AuditActionUserRemove:         true,
+		constant.AuditActionSubscriptionCancel: true,
+		constant.AuditActionInviteCancel:       true,
+	}
+	return criticalActions[action]
+}
+
+// convertToBusinessLog mengkonversi AuditEntry ke AuditLogBusiness
+func (s *auditService) convertToBusinessLog(entry *AuditEntry) *entity.AuditLogBusiness {
+	return &entity.AuditLogBusiness{
 		Timestamp:     time.Now(),
 		UserProfileID: entry.UserProfileID,
 		BusinessID:    entry.BusinessID,
@@ -214,144 +351,68 @@ func (s *auditService) convertToAuditLog(entry *AuditEntry) *entity.AuditLog {
 		Context:       entry.Context,
 		Reason:        entry.Reason,
 	}
-
-	return auditLog
 }
 
-// worker process audit logs dari queue
-func (s *auditService) worker() {
-	defer s.wg.Done()
-
-	batch := make([]*entity.AuditLog, 0, s.batchSize)
-	ticker := time.NewTicker(s.flushTime)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case log := <-s.queue:
-			if log != nil {
-				batch = append(batch, log)
-				if len(batch) >= s.batchSize {
-					s.flush(batch)
-					// Reset batch dan return logs ke pool
-					for _, l := range batch {
-						s.entryPool.Put(l)
-					}
-					batch = batch[:0]
-				}
-			}
-
-		case <-ticker.C:
-			if len(batch) > 0 {
-				s.flush(batch)
-				// Return logs ke pool
-				for _, l := range batch {
-					s.entryPool.Put(l)
-				}
-				batch = batch[:0]
-			}
-
-		case <-s.stop:
-			// Flush remaining logs before stopping
-			if len(batch) > 0 {
-				s.flush(batch)
-				for _, l := range batch {
-					s.entryPool.Put(l)
-				}
-			}
-			
-			// Process remaining queued items with timeout
-			timeout := time.After(5 * time.Second)
-			for {
-				select {
-				case log := <-s.queue:
-					if log != nil {
-						batch = append(batch, log)
-						if len(batch) >= s.batchSize {
-							s.flush(batch)
-							for _, l := range batch {
-								s.entryPool.Put(l)
-							}
-							batch = batch[:0]
-						}
-					}
-				case <-timeout:
-					// Final flush
-					if len(batch) > 0 {
-						s.flush(batch)
-						for _, l := range batch {
-							s.entryPool.Put(l)
-						}
-					}
-					return
-				default:
-					// No more items
-					if len(batch) > 0 {
-						s.flush(batch)
-						for _, l := range batch {
-							s.entryPool.Put(l)
-						}
-					}
-					return
-				}
-			}
-		}
+// convertToCatalogLog mengkonversi AuditEntry ke AuditLogCatalog
+func (s *auditService) convertToCatalogLog(entry *AuditEntry) *entity.AuditLogCatalog {
+	return &entity.AuditLogCatalog{
+		Timestamp:     time.Now(),
+		UserProfileID: entry.UserProfileID,
+		CatalogID:     entry.CatalogID,
+		Action:        entry.Action,
+		Table:         entry.Table,
+		RecordID:      entry.RecordID,
+		OldData:       entry.OldData,
+		NewData:       entry.NewData,
+		Context:       entry.Context,
+		Reason:        entry.Reason,
 	}
 }
 
-// flush menyimpan batch audit logs ke database dengan retry
-func (s *auditService) flush(batch []*entity.AuditLog) {
-	if len(batch) == 0 {
-		return
+// deepCopyEntry membuat deep copy dari audit entry
+func (s *auditService) deepCopyEntry(entry *AuditEntry) *AuditEntry {
+	copied := &AuditEntry{
+		Type:     entry.Type,
+		Action:   entry.Action,
+		Table:    entry.Table,
+		RecordID: entry.RecordID,
+		Reason:   entry.Reason,
 	}
-
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Retry logic
-	maxRetries := 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-
-		// Try to save
-		err := s.saveWithContext(ctx, batch)
-		if err == nil {
-			s.log.Debug("Audit logs saved",
-				logger.Int("batch_size", len(batch)),
-				logger.Int("attempt", attempt+1),
-			)
-			return
-		}
-
-		s.log.Error("Failed to save audit logs",
-			logger.Error(err),
-			logger.Int("batch_size", len(batch)),
-			logger.Int("attempt", attempt+1),
-		)
-	}
-
-	// All retries failed
-	s.log.Error("Failed to save audit logs after retries",
-		logger.Int("batch_size", len(batch)),
-	)
-}
-
-// saveWithContext save batch dengan context
-func (s *auditService) saveWithContext(ctx context.Context, batch []*entity.AuditLog) error {
-	done := make(chan error, 1)
 	
-	go func() {
-		done <- s.repo.BatchCreate(batch)
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
+	// Copy pointers
+	if entry.UserProfileID != nil {
+		profileID := *entry.UserProfileID
+		copied.UserProfileID = &profileID
 	}
+	
+	if entry.BusinessID != nil {
+		businessID := *entry.BusinessID
+		copied.BusinessID = &businessID
+	}
+	
+	if entry.CatalogID != nil {
+		catalogID := *entry.CatalogID
+		copied.CatalogID = &catalogID
+	}
+	
+	// Deep copy JSON data
+	if entry.OldData != nil {
+		copied.OldData = make(json.RawMessage, len(entry.OldData))
+		copy(copied.OldData, entry.OldData)
+	}
+	
+	if entry.NewData != nil {
+		copied.NewData = make(json.RawMessage, len(entry.NewData))
+		copy(copied.NewData, entry.NewData)
+	}
+	
+	// Deep copy context
+	if entry.Context != nil {
+		copied.Context = make(map[string]interface{})
+		for k, v := range entry.Context {
+			copied.Context[k] = v
+		}
+	}
+	
+	return copied
 }

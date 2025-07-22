@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/atam/atamlink/internal/constant"
+	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/entity"
 	"github.com/atam/atamlink/pkg/errors"
 )
 
 // CreateInvite membuat invite link
-func (uc *businessUseCase) CreateInvite(businessID int64, profileID int64, req *dto.CreateInviteRequest) (*dto.InviteResponse, error) {
+func (uc *businessUseCase) CreateInvite(ctx *gin.Context, businessID int64, profileID int64, req *dto.CreateInviteRequest) (*dto.InviteResponse, error) {
 	// Check permission
 	if err := uc.checkBusinessPermission(businessID, profileID, constant.PermUserInvite); err != nil {
 		return nil, err
@@ -62,6 +64,17 @@ func (uc *businessUseCase) CreateInvite(businessID int64, profileID int64, req *
 		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
+	// Set audit data untuk INVITE_CREATE
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, businessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", invite.ID))
+		middleware.SetAuditNewData(ctx, map[string]interface{}{
+			"token":      invite.Token,
+			"role":       invite.Role,
+			"expires_at": invite.ExpiresAt,
+		})
+	}
+
 	// Return response
 	return &dto.InviteResponse{
 		ID:        invite.ID,
@@ -75,7 +88,7 @@ func (uc *businessUseCase) CreateInvite(businessID int64, profileID int64, req *
 }
 
 // AcceptInvite accept invite
-func (uc *businessUseCase) AcceptInvite(req *dto.AcceptInviteRequest) error {
+func (uc *businessUseCase) AcceptInvite(ctx *gin.Context, req *dto.AcceptInviteRequest) error {
 	// Get invite
 	invite, err := uc.businessRepo.GetInviteByToken(req.Token)
 	if err != nil {
@@ -121,5 +134,19 @@ func (uc *businessUseCase) AcceptInvite(req *dto.AcceptInviteRequest) error {
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	// Set audit data untuk INVITE_ACCEPT
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, invite.BusinessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", invite.ID))
+		middleware.SetAuditNewData(ctx, map[string]interface{}{
+			"accepted_by": req.ProfileID,
+			"role":        invite.Role,
+		})
+	}
+
+	return nil
 }

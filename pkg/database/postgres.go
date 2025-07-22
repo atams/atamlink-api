@@ -77,30 +77,3 @@ func Transaction(db *sql.DB, fn func(*sql.Tx) error) error {
 
 	return nil
 }
-
-// NullString helper untuk handling nullable string
-func NullString(s string) sql.NullString {
-	return sql.NullString{
-		String: s,
-		Valid:  s != "",
-	}
-}
-
-// NullInt64 helper untuk handling nullable int64
-func NullInt64(i int64) sql.NullInt64 {
-	return sql.NullInt64{
-		Int64: i,
-		Valid: i != 0,
-	}
-}
-
-// NullTime helper untuk handling nullable time
-func NullTime(t *time.Time) sql.NullTime {
-	if t == nil {
-		return sql.NullTime{Valid: false}
-	}
-	return sql.NullTime{
-		Time:  *t,
-		Valid: true,
-	}
-}

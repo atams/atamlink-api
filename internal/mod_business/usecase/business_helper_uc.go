@@ -96,39 +96,48 @@ func (uc *businessUseCase) toBusinessResponse(business *entity.Business, users [
 	return resp
 }
 
-// deepCopyBusiness creates a deep copy of business entity for audit purposes
-func (uc *businessUseCase) deepCopyBusiness(original *entity.Business) *entity.Business {
+// deepCopyBusinessForAudit creates a deep copy of business data for audit purposes
+// This returns a simplified version suitable for audit logs
+func (uc *businessUseCase) deepCopyBusinessForAudit(original *entity.Business) map[string]interface{} {
 	if original == nil {
 		return nil
 	}
 
-	copy := &entity.Business{
-		ID:               original.ID,
-		Slug:             original.Slug,
-		Name:             original.Name,
-		LogoURL:          original.LogoURL,
-		Type:             original.Type,
-		IsActive:         original.IsActive,
-		IsSuspended:      original.IsSuspended,
-		SuspensionReason: original.SuspensionReason,
-		SuspendedBy:      original.SuspendedBy,
-		SuspendedAt:      original.SuspendedAt,
-		CreatedBy:        original.CreatedBy,
-		CreatedAt:        original.CreatedAt,
-		UpdatedBy:        original.UpdatedBy,
-		UpdatedAt:        original.UpdatedAt,
+	data := map[string]interface{}{
+		"id":           original.ID,
+		"slug":         original.Slug,
+		"name":         original.Name,
+		"type":         original.Type,
+		"is_active":    original.IsActive,
+		"is_suspended": original.IsSuspended,
+		"created_by":   original.CreatedBy,
+		"created_at":   original.CreatedAt,
 	}
 
-	// Deep copy time pointer if exists
-	if original.UpdatedAt != nil {
-		updatedAt := *original.UpdatedAt
-		copy.UpdatedAt = &updatedAt
+	// Add optional fields if they have values
+	if original.LogoURL.Valid {
+		data["logo_url"] = original.LogoURL.String
+	}
+
+	if original.SuspensionReason.Valid {
+		data["suspension_reason"] = original.SuspensionReason.String
+	}
+
+	if original.SuspendedBy.Valid {
+		data["suspended_by"] = original.SuspendedBy.Int64
 	}
 
 	if original.SuspendedAt != nil {
-		suspendedAt := *original.SuspendedAt
-		copy.SuspendedAt = &suspendedAt
+		data["suspended_at"] = original.SuspendedAt
 	}
 
-	return copy
+	if original.UpdatedBy.Valid {
+		data["updated_by"] = original.UpdatedBy.Int64
+	}
+
+	if original.UpdatedAt != nil {
+		data["updated_at"] = original.UpdatedAt
+	}
+
+	return data
 }

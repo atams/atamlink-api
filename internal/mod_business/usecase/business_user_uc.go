@@ -1,16 +1,20 @@
 package usecase
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atam/atamlink/internal/constant"
+	"github.com/atam/atamlink/internal/middleware"
 	"github.com/atam/atamlink/internal/mod_business/dto"
 	"github.com/atam/atamlink/internal/mod_business/entity"
 	"github.com/atam/atamlink/pkg/errors"
 )
 
 // AddUser menambahkan user ke business
-func (uc *businessUseCase) AddUser(businessID int64, profileID int64, req *dto.AddUserRequest) error {
+func (uc *businessUseCase) AddUser(ctx *gin.Context, businessID int64, profileID int64, req *dto.AddUserRequest) error {
 	// Check permission
 	if err := uc.checkBusinessPermission(businessID, profileID, constant.PermUserInvite); err != nil {
 		return err
@@ -52,7 +56,24 @@ func (uc *businessUseCase) AddUser(businessID int64, profileID int64, req *dto.A
 			return err
 		}
 
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return errors.Wrap(err, "failed to commit transaction")
+		}
+
+		// Set audit data untuk USER_ACTIVATE
+		if ctx != nil {
+			middleware.SetAuditBusinessID(ctx, businessID)
+			middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", existingUser.ID))
+			middleware.SetAuditNewData(ctx, map[string]interface{}{
+				"profile_id": req.ProfileID,
+				"role":       req.Role,
+				"is_active":  true,
+			})
+			// Override action di middleware
+			ctx.Set(middleware.GinKeyAuditAction, constant.AuditActionUserActivate)
+		}
+
+		return nil
 	}
 
 	// Add user
@@ -75,11 +96,26 @@ func (uc *businessUseCase) AddUser(businessID int64, profileID int64, req *dto.A
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	// Set audit data untuk USER_ADD
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, businessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", businessUser.ID))
+		middleware.SetAuditNewData(ctx, map[string]interface{}{
+			"profile_id":    req.ProfileID,
+			"role":          req.Role,
+			"display_name":  targetProfile.DisplayName,
+		})
+	}
+
+	return nil
 }
 
 // UpdateUserRole update role user
-func (uc *businessUseCase) UpdateUserRole(businessID int64, profileID int64, targetProfileID int64, role string) error {
+func (uc *businessUseCase) UpdateUserRole(ctx *gin.Context, businessID int64, profileID int64, targetProfileID int64, role string) error {
 	// Check permission
 	if err := uc.checkBusinessPermission(businessID, profileID, constant.PermUserUpdate); err != nil {
 		return err
@@ -104,6 +140,9 @@ func (uc *businessUseCase) UpdateUserRole(businessID int64, profileID int64, tar
 		return errors.New(errors.ErrNotFound, "User tidak ditemukan dalam bisnis", 404)
 	}
 
+	// Store old role for audit
+	oldRole := targetUser.Role
+
 	// Update role
 	tx, err := uc.db.Begin()
 	if err != nil {
@@ -115,11 +154,27 @@ func (uc *businessUseCase) UpdateUserRole(businessID int64, profileID int64, tar
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	// Set audit data untuk USER_ROLE_UPDATE
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, businessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", targetUser.ID))
+		middleware.SetAuditOldData(ctx, map[string]interface{}{
+			"role": oldRole,
+		})
+		middleware.SetAuditNewData(ctx, map[string]interface{}{
+			"role": role,
+		})
+	}
+
+	return nil
 }
 
 // RemoveUser hapus user dari business
-func (uc *businessUseCase) RemoveUser(businessID int64, profileID int64, targetProfileID int64) error {
+func (uc *businessUseCase) RemoveUser(ctx *gin.Context, businessID int64, profileID int64, targetProfileID int64) error {
 	// Check permission
 	if err := uc.checkBusinessPermission(businessID, profileID, constant.PermUserRemove); err != nil {
 		return err
@@ -155,6 +210,13 @@ func (uc *businessUseCase) RemoveUser(businessID int64, profileID int64, targetP
 		return errors.New(errors.ErrValidation, constant.ErrMsgBusinessOwnerRequired, 400)
 	}
 
+	// Store data for audit
+	removedUserData := map[string]interface{}{
+		"profile_id": targetProfileID,
+		"role":       targetUser.Role,
+		"was_owner":  targetUser.IsOwner,
+	}
+
 	// Remove user
 	tx, err := uc.db.Begin()
 	if err != nil {
@@ -168,6 +230,14 @@ func (uc *businessUseCase) RemoveUser(businessID int64, profileID int64, targetP
 
 	if err := tx.Commit(); err != nil {
 		return errors.Wrap(err, "failed to commit transaction")
+	}
+
+	// Set audit data untuk USER_REMOVE
+	if ctx != nil {
+		middleware.SetAuditBusinessID(ctx, businessID)
+		middleware.SetAuditRecordID(ctx, fmt.Sprintf("%d", targetUser.ID))
+		middleware.SetAuditOldData(ctx, removedUserData)
+		middleware.SetAuditNewData(ctx, nil)
 	}
 
 	return nil

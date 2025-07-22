@@ -1,362 +1,333 @@
 package middleware
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/atam/atamlink/internal/constant"
 	"github.com/atam/atamlink/internal/service"
 )
 
+// Gin context keys untuk audit
 const (
-	GinKeyAuditOldData = "audit_old_data"
-	GinKeyAuditNewData = "audit_new_data"
+	GinKeyAuditType       = "audit_type"
+	GinKeyAuditAction     = "audit_action"
+	GinKeyAuditTable      = "audit_table"
+	GinKeyAuditRecordID   = "audit_record_id"
+	GinKeyAuditBusinessID = "audit_business_id"
+	GinKeyAuditCatalogID  = "audit_catalog_id"
+	GinKeyAuditOldData    = "audit_old_data"
+	GinKeyAuditNewData    = "audit_new_data"
+	GinKeyAuditReason     = "audit_reason"
 )
 
-// Audit configuration
-type AuditConfig struct {
-	SkipPaths      []string
-	SkipMethods    []string
-	SkipStatusCode []int
-}
-
-// Default audit configuration
-func DefaultAuditConfig() *AuditConfig {
-	return &AuditConfig{
-		SkipPaths: []string{
-			"/health",
-			"/health/db",
-			"/swagger",
-			"/metrics",
-			"/favicon.ico",
-		},
-		SkipMethods: []string{
-			"OPTIONS",
-			"HEAD",
-		},
-		SkipStatusCode: []int{},
-	}
-}
-
-// auditResponseWriter wraps gin.ResponseWriter untuk capture response
-type auditResponseWriter struct {
-	gin.ResponseWriter
-	body *bytes.Buffer
-}
-
-func (w *auditResponseWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return w.ResponseWriter.Write(b)
-}
-
-// AuditData struktur untuk menyimpan data audit yang akan di-process
-type AuditData struct {
-	ProfileID     *int64
-	BusinessID    *int64
-	Action        string
-	Table         string
-	RecordID      string
-	OldData       json.RawMessage
-	NewData       json.RawMessage
-	Context       map[string]interface{}
-	RequestBody   []byte
-	ResponseBody  []byte
-	Status        int
-}
-
-// Audit middleware untuk audit logging yang aman
-func Audit(auditService service.AuditService, config *AuditConfig) gin.HandlerFunc {
-	if config == nil {
-		config = DefaultAuditConfig()
-	}
-
+// Audit middleware untuk audit logging yang asinkron (renamed from AuditMiddleware)
+func Audit(auditService service.AuditService, _ interface{}) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check if should skip
-		if shouldSkipAudit(c, config) {
-			c.Next()
-			return
-		}
-
-		// Prepare audit data collection
-		auditData := &AuditData{
-			Context: make(map[string]interface{}),
-		}
-
-		// Get user info from context
-		if profileID, exists := GetProfileID(c); exists && profileID > 0 {
-			auditData.ProfileID = &profileID
-		}
-
-		// Capture request body jika ada
-		if c.Request.Body != nil && c.Request.Method != "GET" {
-			bodyBytes, _ := io.ReadAll(c.Request.Body)
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			// Batasi ukuran body yang disimpan (max 10KB)
-			if len(bodyBytes) <= 10240 {
-				auditData.RequestBody = bodyBytes
-			}
-		}
-
-		// Start timer
-		start := time.Now()
-
-		// Wrap response writer
-		blw := &auditResponseWriter{
-			ResponseWriter: c.Writer,
-			body:           bytes.NewBufferString(""),
-		}
-		c.Writer = blw
-
+		// Get profile ID from middleware
+		profileID, _ := GetProfileID(c)
+		
+		// Set audit metadata berdasarkan route
+		setAuditMetadata(c)
+		
 		// Process request
 		c.Next()
-
-		// Collect data setelah request selesai TAPI SEBELUM response dikirim
-		auditData.Status = c.Writer.Status()
 		
-		// Copy response body (batasi 10KB)
-		if blw.body.Len() > 0 && blw.body.Len() <= 10240 {
-			auditData.ResponseBody = make([]byte, blw.body.Len())
-			copy(auditData.ResponseBody, blw.body.Bytes())
-		}
-
-		// Determine action based on method and path
-		auditData.Action = determineAction(c)
-		auditData.Table = extractTableName(c)
-
-		// Extract IDs
-		if bidStr := c.Param("id"); bidStr != "" {
-			if bid, err := strconv.ParseInt(bidStr, 10, 64); err == nil {
-				auditData.BusinessID = &bid
-				auditData.RecordID = bidStr
-			}
-		}
-
-		// Build context dengan data yang aman untuk di-copy
-		auditData.Context = map[string]interface{}{
-			"method":       c.Request.Method,
-			"path":         c.Request.URL.Path,
-			"query":        c.Request.URL.RawQuery,
-			"status":       auditData.Status,
-			"duration_ms":  time.Since(start).Milliseconds(),
-			"client_ip":    c.ClientIP(),
-			"user_agent":   c.Request.UserAgent(),
-			"request_id":   c.GetString("requestID"),
-		}
-
-		// Get old data dari context (sudah di-set oleh usecase)
-		if oldData, exists := c.Get(GinKeyAuditOldData); exists && oldData != nil {
-			// Deep copy old data
-			if jsonData, err := json.Marshal(oldData); err == nil {
-				auditData.OldData = make(json.RawMessage, len(jsonData))
-				copy(auditData.OldData, jsonData)
-			}
-		}
-
-		// Get new data dari context atau response
-		if newData, exists := c.Get(GinKeyAuditNewData); exists && newData != nil {
-			// Deep copy new data dari context
-			if jsonData, err := json.Marshal(newData); err == nil {
-				auditData.NewData = make(json.RawMessage, len(jsonData))
-				copy(auditData.NewData, jsonData)
-			}
-		} else if auditData.Status >= 200 && auditData.Status < 300 && len(auditData.ResponseBody) > 0 {
-			// Extract dari response body jika sukses
-			var responseData map[string]interface{}
-			if err := json.Unmarshal(auditData.ResponseBody, &responseData); err == nil {
-				if data, exists := responseData["data"]; exists && data != nil {
-					if jsonData, err := json.Marshal(data); err == nil {
-						auditData.NewData = make(json.RawMessage, len(jsonData))
-						copy(auditData.NewData, jsonData)
-					}
+		// Log audit setelah response selesai (asinkron)
+		go func() {
+			// Recovery untuk goroutine
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic tapi jangan crash aplikasi
+					fmt.Printf("Audit middleware panic: %v\n", r)
 				}
-			}
-		}
-
-		// Extract business ID dan record ID dari data jika belum ada
-		if auditData.BusinessID == nil || auditData.RecordID == "" {
-			extractedBusinessID, extractedRecordID := extractIDsFromAuditData(auditData)
-			if auditData.BusinessID == nil {
-				auditData.BusinessID = extractedBusinessID
-			}
-			if auditData.RecordID == "" {
-				auditData.RecordID = extractedRecordID
-			}
-		}
-
-		// Check if should log
-		if shouldLogAudit(auditData) {
-			// Create audit entry dengan data yang sudah di-copy
-			entry := &service.AuditEntry{
-				UserProfileID: auditData.ProfileID,
-				BusinessID:    auditData.BusinessID,
-				Action:        auditData.Action,
-				Table:         auditData.Table,
-				RecordID:      auditData.RecordID,
-				OldData:       auditData.OldData,
-				NewData:       auditData.NewData,
-				Context:       auditData.Context,
-			}
-
-			// Log secara asynchronous dengan data yang sudah aman
-			auditService.LogAsync(entry)
-		}
+			}()
+			
+			logAuditAfterResponse(c, auditService, profileID)
+		}()
 	}
 }
 
-// shouldSkipAudit check if should skip audit logging
-func shouldSkipAudit(c *gin.Context, config *AuditConfig) bool {
-	// Skip by path
-	for _, path := range config.SkipPaths {
-		if strings.HasPrefix(c.Request.URL.Path, path) {
-			return true
-		}
-	}
-
-	// Skip by method
-	for _, method := range config.SkipMethods {
-		if c.Request.Method == method {
-			return true
-		}
-	}
-
-	// Skip by status code
-	for _, status := range config.SkipStatusCode {
-		if c.Writer.Status() == status {
-			return true
-		}
-	}
-
-	return false
-}
-
-// determineAction determine audit action from HTTP method
-func determineAction(c *gin.Context) string {
-	switch c.Request.Method {
-	case "POST":
-		return "CREATE"
-	case "PUT", "PATCH":
-		return "UPDATE"
-	case "DELETE":
-		return "DELETE"
-	case "GET":
-		if c.Param("id") != "" {
-			return "VIEW"
-		}
-		return "LIST"
-	default:
-		return c.Request.Method
-	}
-}
-
-// extractTableName extract table name from path
-func extractTableName(c *gin.Context) string {
+// setAuditMetadata sets audit metadata berdasarkan HTTP method dan path
+func setAuditMetadata(c *gin.Context) {
+	method := c.Request.Method
 	path := c.Request.URL.Path
-	parts := strings.Split(strings.Trim(path, "/"), "/")
 	
-	// Skip prefix (api/v1)
-	if len(parts) > 2 {
-		// Get resource name (usually after api/v1)
-		resourceName := parts[2]
+	// Business endpoints
+	if strings.Contains(path, "/api/v1/businesses") {
+		c.Set(GinKeyAuditType, constant.AuditTypeBusiness)
 		
-		// Convert to singular form for table name
-		return toSingular(resourceName)
+		switch {
+		case method == "POST" && strings.HasSuffix(path, "/businesses"):
+			c.Set(GinKeyAuditAction, constant.AuditActionCreate)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinesses)
+			
+		case method == "PUT" && strings.Contains(path, "/businesses/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUpdate)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinesses)
+			
+		case method == "DELETE" && strings.Contains(path, "/businesses/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionDelete)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinesses)
+			
+		case method == "POST" && strings.Contains(path, "/users"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUserAdd)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessUsers)
+			
+		case method == "PUT" && strings.Contains(path, "/users/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUserRoleUpdate)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessUsers)
+			
+		case method == "DELETE" && strings.Contains(path, "/users/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUserRemove)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessUsers)
+			
+		case method == "POST" && strings.Contains(path, "/invites"):
+			c.Set(GinKeyAuditAction, constant.AuditActionInviteCreate)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessInvites)
+			
+		case method == "POST" && strings.Contains(path, "/invites/accept"):
+			c.Set(GinKeyAuditAction, constant.AuditActionInviteAccept)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessInvites)
+			
+		case method == "POST" && strings.Contains(path, "/subscriptions/activate"):
+			c.Set(GinKeyAuditAction, constant.AuditActionSubscriptionActivate)
+			c.Set(GinKeyAuditTable, constant.AuditTableBusinessSubscriptions)
+		}
 	}
 	
-	return "unknown"
-}
-
-// toSingular convert plural to singular (simple implementation)
-func toSingular(plural string) string {
-	// Simple rules, bisa diperluas
-	switch plural {
-	case "businesses":
-		return "business"
-	case "users":
-		return "user"
-	case "catalogs":
-		return "catalog"
-	case "categories":
-		return "category"
-	default:
-		// Remove trailing 's' if exists
-		if strings.HasSuffix(plural, "s") {
-			return strings.TrimSuffix(plural, "s")
-		}
-		return plural
-	}
-}
-
-// extractIDsFromAuditData extract IDs from audit data
-func extractIDsFromAuditData(data *AuditData) (*int64, string) {
-	var businessID *int64
-	var recordID string
-
-	// Try from new data first
-	if data.NewData != nil {
-		var jsonData map[string]interface{}
-		if err := json.Unmarshal(data.NewData, &jsonData); err == nil {
-			// Extract business_id
-			if bid, ok := jsonData["business_id"].(float64); ok {
-				bidInt := int64(bid)
-				businessID = &bidInt
-			}
+	// Catalog endpoints
+	if strings.Contains(path, "/api/v1/catalogs") {
+		c.Set(GinKeyAuditType, constant.AuditTypeCatalog)
+		
+		switch {
+		case method == "POST" && strings.HasSuffix(path, "/catalogs"):
+			c.Set(GinKeyAuditAction, constant.AuditActionCreate)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogs)
 			
-			// Extract record ID based on table
-			idField := fmt.Sprintf("%s_id", data.Table)
-			if id, ok := jsonData["id"].(float64); ok {
-				recordID = fmt.Sprintf("%.0f", id)
-			} else if id, ok := jsonData[idField].(float64); ok {
-				recordID = fmt.Sprintf("%.0f", id)
-			}
-		}
-	}
-
-	// Try from old data if not found
-	if (businessID == nil || recordID == "") && data.OldData != nil {
-		var jsonData map[string]interface{}
-		if err := json.Unmarshal(data.OldData, &jsonData); err == nil {
-			if businessID == nil {
-				if bid, ok := jsonData["business_id"].(float64); ok {
-					bidInt := int64(bid)
-					businessID = &bidInt
-				}
-			}
+		case method == "PUT" && strings.Contains(path, "/catalogs/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUpdate)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogs)
 			
-			if recordID == "" {
-				idField := fmt.Sprintf("%s_id", data.Table)
-				if id, ok := jsonData["id"].(float64); ok {
-					recordID = fmt.Sprintf("%.0f", id)
-				} else if id, ok := jsonData[idField].(float64); ok {
-					recordID = fmt.Sprintf("%.0f", id)
-				}
-			}
+		case method == "DELETE" && strings.Contains(path, "/catalogs/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionDelete)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogs)
+			
+		case method == "POST" && strings.Contains(path, "/sections"):
+			c.Set(GinKeyAuditAction, constant.AuditActionSectionAdd)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogSections)
+			
+		case method == "PUT" && strings.Contains(path, "/sections/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUpdate)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogSections)
+			
+		case method == "DELETE" && strings.Contains(path, "/sections/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionSectionRemove)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogSections)
+			
+		case method == "POST" && strings.Contains(path, "/cards"):
+			c.Set(GinKeyAuditAction, constant.AuditActionCardAdd)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogCards)
+			
+		case method == "PUT" && strings.Contains(path, "/cards/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionUpdate)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogCards)
+			
+		case method == "DELETE" && strings.Contains(path, "/cards/"):
+			c.Set(GinKeyAuditAction, constant.AuditActionCardRemove)
+			c.Set(GinKeyAuditTable, constant.AuditTableCatalogCards)
 		}
 	}
-
-	return businessID, recordID
+	
+	// Profile endpoints
+	if strings.Contains(path, "/api/v1/profile") {
+		c.Set(GinKeyAuditType, constant.AuditTypeBusiness)
+		c.Set(GinKeyAuditTable, constant.AuditTableUserProfiles)
+		
+		switch method {
+		case "POST":
+			c.Set(GinKeyAuditAction, constant.AuditActionCreate)
+		case "PUT":
+			c.Set(GinKeyAuditAction, constant.AuditActionUpdate)
+		case "DELETE":
+			c.Set(GinKeyAuditAction, constant.AuditActionDelete)
+		}
+	}
 }
 
-// shouldLogAudit check if should create audit log
-func shouldLogAudit(data *AuditData) bool {
-	// Skip jika tidak ada perubahan data yang signifikan
-	if data.Action == "LIST" || data.Action == "VIEW" {
-		return false
+// logAuditAfterResponse melakukan audit logging setelah response dikirim
+func logAuditAfterResponse(c *gin.Context, auditService service.AuditService, profileID int64) {
+	// Skip jika bukan successful operation atau GET request
+	if c.Writer.Status() >= 400 || c.Request.Method == "GET" {
+		return
 	}
-
-	// Skip jika error (kecuali untuk operasi tertentu)
-	if data.Status >= 400 {
-		// Log error hanya untuk operasi yang mengubah data
-		if data.Action == "UPDATE" || data.Action == "DELETE" {
-			return data.OldData != nil
+	
+	// Get audit metadata
+	auditType, exists := c.Get(GinKeyAuditType)
+	if !exists {
+		return
+	}
+	
+	action, _ := c.Get(GinKeyAuditAction)
+	table, _ := c.Get(GinKeyAuditTable)
+	recordID, _ := c.Get(GinKeyAuditRecordID)
+	reason, _ := c.Get(GinKeyAuditReason)
+	
+	// Convert to strings
+	actionStr, _ := action.(string)
+	tableStr, _ := table.(string)
+	recordIDStr, _ := recordID.(string)
+	reasonStr, _ := reason.(string)
+	
+	if actionStr == "" || tableStr == "" {
+		return
+	}
+	
+	// Get old and new data
+	oldData, _ := c.Get(GinKeyAuditOldData)
+	newData, _ := c.Get(GinKeyAuditNewData)
+	
+	// Extract IDs from path if not set
+	businessID := extractBusinessIDFromPath(c.Request.URL.Path)
+	catalogID := extractCatalogIDFromPath(c.Request.URL.Path)
+	
+	// Override with context values if available
+	if ctxBusinessID, exists := c.Get(GinKeyAuditBusinessID); exists {
+		if id, ok := ctxBusinessID.(int64); ok {
+			businessID = &id
 		}
-		return false
 	}
+	
+	if ctxCatalogID, exists := c.Get(GinKeyAuditCatalogID); exists {
+		if id, ok := ctxCatalogID.(int64); ok {
+			catalogID = &id
+		}
+	}
+	
+	// Extract record ID from response if not set
+	if recordIDStr == "" {
+		recordIDStr = extractRecordIDFromResponse(c, actionStr)
+	}
+	
+	var profileIDPtr *int64
+	if profileID > 0 {
+		profileIDPtr = &profileID
+	}
+	
+	// Log based on type
+	switch auditType {
+	case constant.AuditTypeBusiness:
+		auditService.LogBusinessActionAsync(
+			profileIDPtr,
+			businessID,
+			actionStr,
+			tableStr,
+			recordIDStr,
+			oldData,
+			newData,
+			reasonStr,
+		)
+		
+	case constant.AuditTypeCatalog:
+		auditService.LogCatalogActionAsync(
+			profileIDPtr,
+			catalogID,
+			actionStr,
+			tableStr,
+			recordIDStr,
+			oldData,
+			newData,
+			reasonStr,
+		)
+	}
+}
 
-	// Harus ada data untuk di-log
-	return data.OldData != nil || data.NewData != nil
+// extractBusinessIDFromPath extracts business ID from URL path
+func extractBusinessIDFromPath(path string) *int64 {
+	// Pattern: /api/v1/businesses/{id}
+	parts := strings.Split(path, "/")
+	
+	for i, part := range parts {
+		if part == "businesses" && i+1 < len(parts) {
+			if id, err := strconv.ParseInt(parts[i+1], 10, 64); err == nil {
+				return &id
+			}
+		}
+	}
+	
+	return nil
+}
+
+// extractCatalogIDFromPath extracts catalog ID from URL path
+func extractCatalogIDFromPath(path string) *int64 {
+	// Pattern: /api/v1/catalogs/{id}
+	parts := strings.Split(path, "/")
+	
+	for i, part := range parts {
+		if part == "catalogs" && i+1 < len(parts) {
+			if id, err := strconv.ParseInt(parts[i+1], 10, 64); err == nil {
+				return &id
+			}
+		}
+	}
+	
+	return nil
+}
+
+// extractRecordIDFromResponse extracts record ID from response body
+func extractRecordIDFromResponse(c *gin.Context, action string) string {
+	// Only extract for CREATE actions
+	if action != constant.AuditActionCreate {
+		return ""
+	}
+	
+	// You could store the ID in context during creation
+	if recordID, exists := c.Get("created_record_id"); exists {
+		if id, ok := recordID.(int64); ok {
+			return fmt.Sprintf("%d", id)
+		}
+		if idStr, ok := recordID.(string); ok {
+			return idStr
+		}
+	}
+	
+	return ""
+}
+
+// SetAuditData helper function untuk set audit data di handler
+func SetAuditData(c *gin.Context, key string, value interface{}) {
+	c.Set(key, value)
+}
+
+// SetAuditBusinessID sets business ID for audit
+func SetAuditBusinessID(c *gin.Context, businessID int64) {
+	c.Set(GinKeyAuditBusinessID, businessID)
+}
+
+// SetAuditCatalogID sets catalog ID for audit
+func SetAuditCatalogID(c *gin.Context, catalogID int64) {
+	c.Set(GinKeyAuditCatalogID, catalogID)
+}
+
+// SetAuditRecordID sets record ID for audit
+func SetAuditRecordID(c *gin.Context, recordID string) {
+	c.Set(GinKeyAuditRecordID, recordID)
+}
+
+// SetAuditOldData sets old data for audit
+func SetAuditOldData(c *gin.Context, data interface{}) {
+	c.Set(GinKeyAuditOldData, data)
+}
+
+// SetAuditNewData sets new data for audit
+func SetAuditNewData(c *gin.Context, data interface{}) {
+	c.Set(GinKeyAuditNewData, data)
+}
+
+// SetAuditReason sets reason for audit
+func SetAuditReason(c *gin.Context, reason string) {
+	c.Set(GinKeyAuditReason, reason)
 }

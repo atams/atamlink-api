@@ -3,10 +3,11 @@ package repository
 import (
 	"database/sql"
 	"time"
+	"fmt"
 
 	"github.com/atam/atamlink/internal/constant"
 	"github.com/atam/atamlink/internal/mod_business/entity"
-	"github.com/atam/atamlink/pkg/database"
+	// "github.com/atam/atamlink/pkg/database"
 	"github.com/atam/atamlink/pkg/errors"
 )
 
@@ -260,73 +261,147 @@ func (r *businessRepository) IsSlugExists(slug string) (bool, error) {
 
 // GetBusinessesWithUserCount mendapatkan businesses dengan user count dan role
 func (r *businessRepository) GetBusinessesWithUserCount(filter ListFilter) ([]*BusinessWithUserCount, int64, error) {
-	qb := database.NewQueryBuilder()
-	qb.Select(`b.b_id, b.b_slug, b.b_name, b.b_logo_url, b.b_type, 
-		b.b_is_active, b.b_is_suspended, b.b_suspension_reason, 
-		b.b_suspended_by, b.b_suspended_at,
-		b.b_created_by, b.b_created_at, b.b_updated_by, b.b_updated_at,
-		COUNT(DISTINCT bu_all.bu_id) FILTER (WHERE bu_all.bu_is_active = true) as user_count`)
-	
-	// Add user role jika ada profileID
-	if filter.ProfileID > 0 {
-		qb.Select("bu.bu_role as user_role")
-	}
-
-	qb.From("atamlink.businesses b")
-	qb.LeftJoin("atamlink.business_users bu_all", "bu_all.bu_b_id = b.b_id")
-	
-	// Join untuk mendapatkan role user jika ada profileID
-	if filter.ProfileID > 0 {
-		qb.LeftJoin("atamlink.business_users bu", "bu.bu_b_id = b.b_id AND bu.bu_is_active = true")
-		qb.Where("bu.bu_up_id = ?", filter.ProfileID)
-	}
-
-	// Base filter - only active businesses
-	qb.Where("b.b_is_active = true")
-	
-	// If profile ID is provided, only show businesses where user is member
-	if filter.ProfileID > 0 {
-		qb.Where("EXISTS (SELECT 1 FROM atamlink.business_users WHERE bu_b_id = b.b_id AND bu_up_id = ? AND bu_is_active = true)", filter.ProfileID)
-	}
-
-	// Apply filters
-	if filter.Search != "" {
-		qb.Where("(LOWER(b.b_name) LIKE LOWER(?) OR LOWER(b.b_slug) LIKE LOWER(?))", "%"+filter.Search+"%", "%"+filter.Search+"%")
-	}
-
-	if filter.Type != "" {
-		qb.Where("b.b_type = ?", filter.Type)
-	}
-
-	if filter.IsSuspended != nil {
-		qb.Where("b.b_is_suspended = ?", *filter.IsSuspended)
-	}
-
-	// Group by all selected columns
-	qb.GroupBy(`b.b_id, b.b_slug, b.b_name, b.b_logo_url, b.b_type, 
-		b.b_is_active, b.b_is_suspended, b.b_suspension_reason, 
-		b.b_suspended_by, b.b_suspended_at,
-		b.b_created_by, b.b_created_at, b.b_updated_by, b.b_updated_at`)
-	
-	if filter.ProfileID > 0 {
-		qb.GroupBy("bu.bu_role")
-	}
-
-	// Count total
-	countQuery, countArgs := qb.BuildCount()
+	// Build base query untuk count (tanpa GROUP BY)
 	var total int64
+	
+	// Count query yang sederhana
+	countQuery := `
+		SELECT COUNT(DISTINCT b.b_id)
+		FROM atamlink.businesses b
+		WHERE b.b_is_active = true`
+	
+	countArgs := []interface{}{}
+	argIndex := 1
+	
+	// Add filters untuk count
+	if filter.ProfileID > 0 {
+		countQuery += ` AND EXISTS (
+			SELECT 1 FROM atamlink.business_users bu 
+			WHERE bu.bu_b_id = b.b_id 
+			AND bu.bu_up_id = $` + fmt.Sprintf("%d", argIndex) + ` 
+			AND bu.bu_is_active = true
+		)`
+		countArgs = append(countArgs, filter.ProfileID)
+		argIndex++
+	}
+	
+	if filter.Search != "" {
+		countQuery += ` AND (LOWER(b.b_name) LIKE LOWER($` + fmt.Sprintf("%d", argIndex) + `) OR LOWER(b.b_slug) LIKE LOWER($` + fmt.Sprintf("%d", argIndex+1) + `))`
+		countArgs = append(countArgs, "%"+filter.Search+"%", "%"+filter.Search+"%")
+		argIndex += 2
+	}
+	
+	if filter.Type != "" {
+		countQuery += ` AND b.b_type = $` + fmt.Sprintf("%d", argIndex)
+		countArgs = append(countArgs, filter.Type)
+		argIndex++
+	}
+	
+	if filter.IsSuspended != nil {
+		countQuery += ` AND b.b_is_suspended = $` + fmt.Sprintf("%d", argIndex)
+		countArgs = append(countArgs, *filter.IsSuspended)
+		argIndex++
+	}
+
+	// Execute count
 	err := r.db.QueryRow(countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, errors.Wrap(err, "failed to count businesses")
 	}
 
-	// Get data
-	qb.OrderBy(filter.OrderBy)
-	qb.Limit(filter.Limit)
-	qb.Offset(filter.Offset)
+	// Build data query
+	selectCols := `
+		b.b_id, b.b_slug, b.b_name, b.b_logo_url, b.b_type, 
+		b.b_is_active, b.b_is_suspended, b.b_suspension_reason, 
+		b.b_suspended_by, b.b_suspended_at,
+		b.b_created_by, b.b_created_at, b.b_updated_by, b.b_updated_at,
+		COUNT(DISTINCT bu_all.bu_id) FILTER (WHERE bu_all.bu_is_active = true) as user_count`
+	
+	if filter.ProfileID > 0 {
+		selectCols += `, bu_user.bu_role as user_role`
+	}
 
-	query, args := qb.Build()
-	rows, err := r.db.Query(query, args...)
+	dataQuery := `SELECT ` + selectCols + `
+		FROM atamlink.businesses b
+		LEFT JOIN atamlink.business_users bu_all ON bu_all.bu_b_id = b.b_id`
+	
+	if filter.ProfileID > 0 {
+		dataQuery += ` LEFT JOIN atamlink.business_users bu_user ON (bu_user.bu_b_id = b.b_id AND bu_user.bu_up_id = $1 AND bu_user.bu_is_active = true)`
+	}
+	
+	dataQuery += ` WHERE b.b_is_active = true`
+	
+	dataArgs := []interface{}{}
+	argIndex = 1
+	
+	// Add ProfileID as first argument if needed
+	if filter.ProfileID > 0 {
+		dataArgs = append(dataArgs, filter.ProfileID)
+		argIndex++
+		
+		// Filter businesses where user is member
+		dataQuery += ` AND EXISTS (
+			SELECT 1 FROM atamlink.business_users bu 
+			WHERE bu.bu_b_id = b.b_id 
+			AND bu.bu_up_id = $` + fmt.Sprintf("%d", argIndex) + ` 
+			AND bu.bu_is_active = true
+		)`
+		dataArgs = append(dataArgs, filter.ProfileID)
+		argIndex++
+	}
+	
+	// Add other filters
+	if filter.Search != "" {
+		dataQuery += ` AND (LOWER(b.b_name) LIKE LOWER($` + fmt.Sprintf("%d", argIndex) + `) OR LOWER(b.b_slug) LIKE LOWER($` + fmt.Sprintf("%d", argIndex+1) + `))`
+		dataArgs = append(dataArgs, "%"+filter.Search+"%", "%"+filter.Search+"%")
+		argIndex += 2
+	}
+	
+	if filter.Type != "" {
+		dataQuery += ` AND b.b_type = $` + fmt.Sprintf("%d", argIndex)
+		dataArgs = append(dataArgs, filter.Type)
+		argIndex++
+	}
+	
+	if filter.IsSuspended != nil {
+		dataQuery += ` AND b.b_is_suspended = $` + fmt.Sprintf("%d", argIndex)
+		dataArgs = append(dataArgs, *filter.IsSuspended)
+		argIndex++
+	}
+
+	// GROUP BY
+	groupBy := `
+		GROUP BY b.b_id, b.b_slug, b.b_name, b.b_logo_url, b.b_type, 
+		b.b_is_active, b.b_is_suspended, b.b_suspension_reason, 
+		b.b_suspended_by, b.b_suspended_at,
+		b.b_created_by, b.b_created_at, b.b_updated_by, b.b_updated_at`
+	
+	if filter.ProfileID > 0 {
+		groupBy += `, bu_user.bu_role`
+	}
+	
+	dataQuery += groupBy
+
+	// ORDER BY
+	if filter.OrderBy != "" {
+		dataQuery += ` ORDER BY ` + filter.OrderBy
+	}
+
+	// LIMIT and OFFSET
+	if filter.Limit > 0 {
+		dataQuery += ` LIMIT $` + fmt.Sprintf("%d", argIndex)
+		dataArgs = append(dataArgs, filter.Limit)
+		argIndex++
+	}
+	
+	if filter.Offset > 0 {
+		dataQuery += ` OFFSET $` + fmt.Sprintf("%d", argIndex)
+		dataArgs = append(dataArgs, filter.Offset)
+		argIndex++
+	}
+
+	// Execute data query
+	rows, err := r.db.Query(dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, errors.Wrap(err, "failed to query businesses")
 	}

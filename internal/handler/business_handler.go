@@ -400,8 +400,8 @@ func (h *BusinessHandler) AddUser(c *gin.Context) {
 		return
 	}
 
-	// Add user
-	if err := h.businessUC.AddUser(businessID, profileID, &req); err != nil {
+	// Add user - pass context untuk audit
+	if err := h.businessUC.AddUser(c, businessID, profileID, &req); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -460,8 +460,8 @@ func (h *BusinessHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	// Update user role
-	if err := h.businessUC.UpdateUserRole(businessID, profileID, targetProfileID, req.Role); err != nil {
+	// Update user role - pass context untuk audit
+	if err := h.businessUC.UpdateUserRole(c, businessID, profileID, targetProfileID, req.Role); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -506,8 +506,8 @@ func (h *BusinessHandler) RemoveUser(c *gin.Context) {
 		return
 	}
 
-	// Remove user
-	if err := h.businessUC.RemoveUser(businessID, profileID, targetProfileID); err != nil {
+	// Remove user - pass context untuk audit
+	if err := h.businessUC.RemoveUser(c, businessID, profileID, targetProfileID); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -558,8 +558,8 @@ func (h *BusinessHandler) CreateInvite(c *gin.Context) {
 		return
 	}
 
-	// Create invite
-	invite, err := h.businessUC.CreateInvite(businessID, profileID, &req)
+	// Create invite - pass context untuk audit
+	invite, err := h.businessUC.CreateInvite(c, businessID, profileID, &req)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -605,8 +605,8 @@ func (h *BusinessHandler) AcceptInvite(c *gin.Context) {
 		return
 	}
 
-	// Accept invite
-	if err := h.businessUC.AcceptInvite(&req); err != nil {
+	// Accept invite - pass context untuk audit
+	if err := h.businessUC.AcceptInvite(c, &req); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -647,7 +647,8 @@ func (h *BusinessHandler) ActivateSubscription(c *gin.Context) {
 		return
 	}
 
-	subscription, err := h.businessUC.ActivateSubscription(profileID, &req)
+	// Activate subscription - pass context untuk audit
+	subscription, err := h.businessUC.ActivateSubscription(c, profileID, &req)
 	if err != nil {
 		h.handleError(c, err)
 		return
